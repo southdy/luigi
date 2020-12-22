@@ -2174,6 +2174,11 @@ bool _UIMenusOpen() {
 	return false;
 }
 
+void _UIWindowDestroyCommon(UIWindow *window) {
+	UI_REALLOC(window->bits, 0);
+	UI_REALLOC(window->shortcuts, 0);
+}
+
 void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) {
 	if (window->pressed) {
 		if (message == UI_MSG_MOUSE_MOVE) {
@@ -2291,12 +2296,19 @@ int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_LAYOUT && element->children) {
 		UIElementMove(element->children, element->bounds, false);
 		UIElementRepaint(element, NULL);
+	} else if (message == UI_MSG_DESTROY) {
+		UIWindow *window = (UIWindow *) element;
+		_UIWindowDestroyCommon(window);
+		window->image->data = NULL;
+		XDestroyImage(window->image);
+		XDestroyIC(window->xic);
+		XDestroyWindow(ui.display, ((UIWindow *) element)->window);
 	}
 
 	return 0;
 }
 
-UIWindow *UIWindowCreate(uint64_t flags, const char *cTitle) {
+UIWindow *UIWindowCreate(UIWindow *owner, uint64_t flags, const char *cTitle) {
 	_UICloseMenus();
 
 	UIWindow *window = (UIWindow *) _UIElementSetup(sizeof(UIWindow), NULL, flags, _UIWindowMessage);
@@ -2306,12 +2318,20 @@ UIWindow *UIWindowCreate(uint64_t flags, const char *cTitle) {
 	window->next = ui.windows;
 	ui.windows = window;
 
-	window->window = XCreateWindow(ui.display, DefaultRootWindow(ui.display), 0, 0, 800, 600, 0, 0, InputOutput, CopyFromParent, 0, 0);
+	int width = (flags & UI_WINDOW_MENU) ? 1 : 800;
+	int height = (flags & UI_WINDOW_MENU) ? 1 : 600;
+
+	window->window = XCreateWindow(ui.display, DefaultRootWindow(ui.display), 0, 0, width, height, 0, 0, 
+		InputOutput, CopyFromParent, 0, 0);
 	XStoreName(ui.display, window->window, cTitle);
 	XSelectInput(ui.display, window->window, SubstructureNotifyMask | ExposureMask | PointerMotionMask 
-			| ButtonPressMask | ButtonReleaseMask | KeyPressMask | KeyReleaseMask | StructureNotifyMask
-			| EnterWindowMask | LeaveWindowMask | ButtonMotionMask | KeymapStateMask | FocusChangeMask);
-	XMapRaised(ui.display, window->window);
+		| ButtonPressMask | ButtonReleaseMask | KeyPressMask | KeyReleaseMask | StructureNotifyMask
+		| EnterWindowMask | LeaveWindowMask | ButtonMotionMask | KeymapStateMask | FocusChangeMask);
+
+	if (~flags & UI_WINDOW_MENU) {
+		XMapRaised(ui.display, window->window);
+	}
+
 	XSetWMProtocols(ui.display, window->window, &ui.windowClosedID, 1);
 	window->image = XCreateImage(ui.display, ui.visual, 24, ZPixmap, 0, NULL, 10, 10, 32, 0);
 
@@ -2365,6 +2385,35 @@ void _UIWindowEndPaint(UIWindow *window, UIPainter *painter) {
 	XPutImage(ui.display, window->window, DefaultGC(ui.display, 0), window->image, 
 		UI_RECT_TOP_LEFT(window->updateRegion), UI_RECT_TOP_LEFT(window->updateRegion),
 		UI_RECT_SIZE(window->updateRegion));
+}
+
+UIRectangle UIElementScreenBounds(UIElement *element) {
+	int x, y;
+	Window child;
+	XWindowAttributes attributes;
+	XTranslateCoordinates(ui.display, element->window->window, DefaultRootWindow(ui.display), 0, 0, &x, &y, &child);
+	XGetWindowAttributes(ui.display, element->window->window, &attributes);
+	return UIRectangleAdd(element->bounds, UI_RECT_2(x - attributes.x, y - attributes.y));
+}
+
+void UIMenuShow(UIMenu *menu) {
+	int width = UIElementMessage(&menu->e, UI_MSG_GET_WIDTH, 0, 0);
+	int height = UIElementMessage(&menu->e, UI_MSG_GET_HEIGHT, 0, 0);
+
+	struct Hints {
+		int flags;
+		int functions;
+		int decorations;
+		int inputMode;
+		int status;
+	};
+
+	struct Hints hints = { 2 };
+	Atom property = XInternAtom(ui.display, "_MOTIF_WM_HINTS", true);
+	XChangeProperty(ui.display, menu->e.window->window, property, property, 32, PropModeReplace, (uint8_t *) &hints, 5);
+
+	XMapWindow(ui.display, menu->e.window->window);
+	XMoveResizeWindow(ui.display, menu->e.window->window, menu->pointX, menu->pointY, width, height);
 }
 
 bool _UIProcessEvent(XEvent *event) {
@@ -2518,7 +2567,10 @@ int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIElementMove(element->children, element->bounds, false);
 		UIElementRepaint(element, NULL);
 	} else if (message == UI_MSG_DESTROY) {
-		DestroyWindow(((UIWindow *) element)->hwnd);
+		UIWindow *window = (UIWindow *) element;
+		_UIWindowDestroyCommon(window);
+		SetWindowLongPtr(window->hwnd, GWLP_USERDATA, 0);
+		DestroyWindow(window->hwnd);
 	}
 
 	return 0;
