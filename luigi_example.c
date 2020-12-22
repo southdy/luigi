@@ -84,6 +84,7 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 		UIButtonCreate(&panel->e, 0, "4", -1)->e.messageUser = MyButtonMessage;
 		UIButtonCreate(&panel->e, 0, "5", -1)->e.messageUser = MyButtonMessage;
 		UIGaugeCreate(&panel->e, 0)->position = 0.3f;
+		UISliderCreate(&panel->e, 0)->position = 0.3f;
 		UITextboxCreate(&panel->e, 0);
 	}
 

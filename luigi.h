@@ -12,7 +12,6 @@
 // TODO Elements:
 // 	- check box 
 // 	- radio box
-// 	- slider 
 // 	- list view
 // 	- dialogs
 // 	- menu bar
@@ -55,9 +54,6 @@
 #include <windows.h>
 
 #include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <time.h>
 
 #define _UI_TO_STRING_1(x) #x
 #define _UI_TO_STRING_2(x) _UI_TO_STRING_1(x)
@@ -131,6 +127,11 @@
 #define UI_SIZE_GAUGE_WIDTH (200)
 #define UI_SIZE_GAUGE_HEIGHT (22)
 
+#define UI_SIZE_SLIDER_WIDTH (200)
+#define UI_SIZE_SLIDER_HEIGHT (25)
+#define UI_SIZE_SLIDER_THUMB (15)
+#define UI_SIZE_SLIDER_TRACK (3)
+
 #define UI_SIZE_TEXTBOX_MARGIN (3)
 #define UI_SIZE_TEXTBOX_WIDTH (200)
 #define UI_SIZE_TEXTBOX_HEIGHT (25)
@@ -176,6 +177,8 @@ typedef enum UIMessage {
 	UI_MSG_MOUSE_WHEEL, // di = delta; return 1 if handled
 
 	UI_MSG_TABLE_GET_ITEM, // dp = pointer to UITableGetItem; return string length
+	UI_MSG_SLIDER_CHANGED,
+	UI_MSG_TEXTBOX_CHANGED,
 } UIMessage;
 
 typedef struct UIKeyTyped {
@@ -394,6 +397,11 @@ typedef struct UIMenu {
 	int pointX, pointY;
 } UIMenu;
 
+typedef struct UISlider {
+	UIElement e;
+	float position;
+} UISlider;
+
 void UIInitialise();
 int UIMessageLoop();
 
@@ -401,6 +409,7 @@ UIButton *UIButtonCreate(UIElement *parent, uint64_t flags, const char *label, p
 UIGauge *UIGaugeCreate(UIElement *parent, uint64_t flags);
 UIPanel *UIPanelCreate(UIElement *parent, uint64_t flags);
 UIScrollBar *UIScrollBarCreate(UIElement *parent, uint64_t flags);
+UISlider *UISliderCreate(UIElement *parent, uint64_t flags);
 UISpacer *UISpacerCreate(UIElement *parent, uint64_t flags, int width, int height);
 UISplitPane *UISplitPaneCreate(UIElement *parent, uint64_t flags, float weight);
 UITabPane *UITabPaneCreate(UIElement *parent, uint64_t flags, const char *tabs /* separate with \t, terminate with \0 */);
@@ -417,7 +426,7 @@ void UIMenuAddItem(UIMenu *menu, uint64_t flags, const char *label, ptrdiff_t la
 void UIMenuShow(UIMenu *menu);
 
 UITextbox *UITextboxCreate(UIElement *parent, uint64_t flags);
-void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes);
+void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, bool sendChangedMessage);
 void UITextboxMoveCaret(UITextbox *textbox, bool backward, bool word);
 
 UITable *UITableCreate(UIElement *parent, uint64_t flags, const char *columns /* separate with \t, terminate with \0 */);
@@ -1556,6 +1565,46 @@ UIGauge *UIGaugeCreate(UIElement *parent, uint64_t flags) {
 	return (UIGauge *) _UIElementSetup(sizeof(UIGauge), parent, flags, _UIGaugeMessage);
 }
 
+int _UISliderMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	UISlider *slider = (UISlider *) element;
+
+	if (message == UI_MSG_GET_HEIGHT) {
+		return UI_SIZE_SLIDER_HEIGHT * element->window->scale;
+	} else if (message == UI_MSG_GET_WIDTH) {
+		return UI_SIZE_SLIDER_WIDTH * element->window->scale;
+	} else if (message == UI_MSG_PAINT) {
+		UIPainter *painter = (UIPainter *) dp;
+		UIRectangle bounds = element->bounds;
+		int centerY = (bounds.t + bounds.b) / 2;
+		int trackSize = UI_SIZE_SLIDER_TRACK * element->window->scale;
+		int thumbSize = UI_SIZE_SLIDER_THUMB * element->window->scale;
+		int thumbPosition = (UI_RECT_WIDTH(bounds) - thumbSize) * slider->position;
+		UIRectangle track = UI_RECT_4(bounds.l, bounds.r, centerY - (trackSize + 1) / 2, centerY + trackSize / 2);
+		UIDrawRectangle(painter, track, UI_COLOR_BUTTON_NORMAL, UI_COLOR_BUTTON_BORDER, UI_RECT_1(1));
+		bool pressed = element == element->window->pressed;
+		bool hovered = element == element->window->hovered;
+		uint32_t color = pressed ? UI_COLOR_BUTTON_PRESSED : hovered ? UI_COLOR_BUTTON_HOVERED : UI_COLOR_BUTTON_NORMAL;
+		UIRectangle thumb = UI_RECT_4(bounds.l + thumbPosition, bounds.l + thumbPosition + thumbSize, centerY - (thumbSize + 1) / 2, centerY + thumbSize / 2);
+		UIDrawRectangle(painter, thumb, color, UI_COLOR_BUTTON_BORDER, UI_RECT_1(1));
+	} else if (message == UI_MSG_LEFT_DOWN || (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1)) {
+		UIRectangle bounds = element->bounds;
+		int thumbSize = UI_SIZE_SLIDER_THUMB * element->window->scale;
+		slider->position = (float) (element->window->cursorX - thumbSize / 2 - bounds.l) / (UI_RECT_WIDTH(bounds) - thumbSize);
+		if (slider->position < 0) slider->position = 0;
+		if (slider->position > 1) slider->position = 1;
+		UIElementMessage(element, UI_MSG_SLIDER_CHANGED, 0, 0);
+		UIElementRepaint(element, NULL);
+	} else if (message == UI_MSG_UPDATE) {
+		UIElementRepaint(element, NULL);
+	}
+
+	return 0;
+}
+
+UISlider *UISliderCreate(UIElement *parent, uint64_t flags) {
+	return (UISlider *) _UIElementSetup(sizeof(UISlider), parent, flags, _UISliderMessage);
+}
+
 int UITableHitTest(UITable *table, int x, int y) {
 	x -= table->e.bounds.l;
 
@@ -1744,7 +1793,7 @@ UITable *UITableCreate(UIElement *parent, uint64_t flags, const char *columns) {
 	return table;
 }
 
-void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes) {
+void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, bool sendChangedMessage) {
 	if (bytes == -1) {
 		bytes = _UIStringLength(text);
 	}
@@ -1775,6 +1824,8 @@ void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes) {
 	textbox->bytes += bytes;
 	textbox->carets[0] += bytes;
 	textbox->carets[1] = textbox->carets[0];
+
+	UIElementMessage(&textbox->e, UI_MSG_TEXTBOX_CHANGED, 0, 0);
 }
 
 void UITextboxMoveCaret(UITextbox *textbox, bool backward, bool word) {
@@ -1856,7 +1907,7 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				UITextboxMoveCaret(textbox, m->code == UI_KEYCODE_BACKSPACE, element->window->ctrl);
 			}
 
-			UITextboxReplace(textbox, NULL, 0);
+			UITextboxReplace(textbox, NULL, 0, true);
 		} else if (m->code == UI_KEYCODE_LEFT || m->code == UI_KEYCODE_RIGHT) {
 			UITextboxMoveCaret(textbox, m->code == UI_KEYCODE_LEFT, element->window->ctrl);
 
@@ -1877,7 +1928,7 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			textbox->carets[1] = 0;
 			textbox->carets[0] = textbox->bytes;
 		} else if (m->textBytes && !element->window->ctrl) {
-			UITextboxReplace(textbox, m->text, m->textBytes);
+			UITextboxReplace(textbox, m->text, m->textBytes, true);
 		}
 
 		UIElementRepaint(element, NULL);
@@ -2576,7 +2627,7 @@ int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-LRESULT _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	UIWindow *window = (UIWindow *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
 	if (!window) {
