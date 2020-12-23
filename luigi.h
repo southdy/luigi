@@ -53,6 +53,7 @@
 #define UI_KEYCODE_DOWN XK_Down
 #define UI_KEYCODE_END XK_End
 #define UI_KEYCODE_ENTER XK_Return
+#define UI_KEYCODE_ESCAPE XK_Escape
 #define UI_KEYCODE_F1 XK_F1
 #define UI_KEYCODE_F10 XK_F10
 #define UI_KEYCODE_F11 XK_F11
@@ -95,6 +96,7 @@
 #define UI_KEYCODE_DOWN VK_DOWN
 #define UI_KEYCODE_END VK_END
 #define UI_KEYCODE_ENTER VK_RETURN
+#define UI_KEYCODE_ESCAPE VK_ESCAPE
 #define UI_KEYCODE_F1 VK_F1
 #define UI_KEYCODE_F10 VK_F10
 #define UI_KEYCODE_F11 VK_F11
@@ -206,6 +208,7 @@ typedef enum UIMessage {
 
 	UI_MSG_TABLE_GET_ITEM, // dp = pointer to UITableGetItem; return string length
 	UI_MSG_CODE_GET_MARGIN_COLOR, // di = line index (starts at 1); return color
+	UI_MSG_WINDOW_CLOSE, // return 1 to prevent default (process exit)
 
 	UI_MSG_USER,
 } UIMessage;
@@ -504,6 +507,7 @@ int UIMeasureStringWidth(const char *string, ptrdiff_t bytes);
 int UIMeasureStringHeight();
 
 void UIElementDestroy(UIElement *element);
+void UIElementDestroyDescendents(UIElement *element);
 UIElement *UIElementFindByPoint(UIElement *element, int x, int y);
 void UIElementFocus(UIElement *element);
 UIRectangle UIElementScreenBounds(UIElement *element); // Returns bounds of element in same coordinate system as used by UIWindowCreate.
@@ -550,44 +554,46 @@ struct {
 } ui;
 
 UITheme _uiThemeDefault = {
-	.panel1 = 0xF0F0F0,
-	.panel2 = 0xFFFFFF,
+	{{
+		.panel1 = 0xF0F0F0,
+		.panel2 = 0xFFFFFF,
 
-	.text = 0x000000,
+		.text = 0x000000,
 
-	.border = 0x404040,
+		.border = 0x404040,
 
-	.buttonNormal = 0xE0E0E0,
-	.buttonHovered = 0xF0F0F0,
-	.buttonPressed = 0xA0A0A0,
-	.buttonFocused = 0xD3E4FF,
+		.buttonNormal = 0xE0E0E0,
+		.buttonHovered = 0xF0F0F0,
+		.buttonPressed = 0xA0A0A0,
+		.buttonFocused = 0xD3E4FF,
 
-	.textboxNormal = 0xF8F8F8,
-	.textboxText = 0x000000,
-	.textboxFocused = 0xFFFFFF,
-	.textboxSelected = 0x175EC9,
-	.textboxSelectedText = 0xFFFFFF,
+		.textboxNormal = 0xF8F8F8,
+		.textboxText = 0x000000,
+		.textboxFocused = 0xFFFFFF,
+		.textboxSelected = 0x175EC9,
+		.textboxSelectedText = 0xFFFFFF,
 
-	.scrollGlyph = 0x606060,
-	.scrollThumbNormal = 0xB0B0B0,
-	.scrollThumbHovered = 0xD0D0D0,
-	.scrollThumbPressed = 0x909090,
+		.scrollGlyph = 0x606060,
+		.scrollThumbNormal = 0xB0B0B0,
+		.scrollThumbHovered = 0xD0D0D0,
+		.scrollThumbPressed = 0x909090,
 
-	.codeFocused = 0x505055,
-	.codeBackground = 0x28282D,
-	.codeDefault = 0xFFFFFF,
-	.codeComment = 0xB4B4B4,
-	.codeString = 0xF5DDD1,
-	.codeNumber = 0xD1F5DD,
-	.codeOperator = 0xF5F3D1,
-	.codePreprocessor = 0xF5F3D1,
+		.codeFocused = 0x505055,
+		.codeBackground = 0x28282D,
+		.codeDefault = 0xFFFFFF,
+		.codeComment = 0xB4B4B4,
+		.codeString = 0xF5DDD1,
+		.codeNumber = 0xD1F5DD,
+		.codeOperator = 0xF5F3D1,
+		.codePreprocessor = 0xF5F3D1,
 
-	.gaugeFilled = 0x2CE342,
+		.gaugeFilled = 0x2CE342,
 
-	.tableSelected = 0x94BEFE,
-	.tableSelectedText = 0x000000,
-	.tableHovered = 0xD3E4FF,
-	.tableHoveredText = 0x000000,
+		.tableSelected = 0x94BEFE,
+		.tableSelectedText = 0x000000,
+		.tableHovered = 0xD3E4FF,
+		.tableHoveredText = 0x000000,
+	}},
 };
 
 // Taken from https://commons.wikimedia.org/wiki/File:Codepage-437.png
@@ -812,6 +818,19 @@ void UIElementRepaint(UIElement *element, UIRectangle *region) {
 	}
 }
 
+void UIElementDestroyDescendents(UIElement *element) {
+	UIElement *child = element->children;
+
+	while (child) {
+		UIElementDestroy(child);
+		child = child->next;
+	}
+
+#ifdef UI_DEBUG
+	_UIInspectorRefresh();
+#endif
+}
+
 void UIElementDestroy(UIElement *element) {
 	if (element->flags & UI_ELEMENT_DESTROY) {
 		return;
@@ -826,16 +845,7 @@ void UIElementDestroy(UIElement *element) {
 		ancestor = ancestor->parent;
 	}
 
-	UIElement *child = element->children;
-
-	while (child) {
-		UIElementDestroy(child);
-		child = child->next;
-	}
-
-#ifdef UI_DEBUG
-	_UIInspectorRefresh();
-#endif
+	UIElementDestroyDescendents(element);
 }
 
 void UIDrawBlock(UIPainter *painter, UIRectangle rectangle, uint32_t color) {
@@ -2460,7 +2470,7 @@ int _UIMenuMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			child = child->next;
 		}
 
-		return width;
+		return width + 4;
 	} else if (message == UI_MSG_GET_HEIGHT) {
 		UIElement *child = element->children;
 		int height = 0;
@@ -2470,16 +2480,25 @@ int _UIMenuMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			child = child->next;
 		}
 
-		return height;
+		return height + 4;
+	} else if (message == UI_MSG_PAINT) {
+		UIDrawBlock((UIPainter *) dp, element->bounds, ui.theme.border);
 	} else if (message == UI_MSG_LAYOUT) {
 		UIElement *child = element->children;
-		int position = element->bounds.t;
+		int position = element->bounds.t + 2;
 
 		while (child) {
 			int height = UIElementMessage(child, UI_MSG_GET_HEIGHT, 0, 0);
-			UIElementMove(child, UI_RECT_4(element->bounds.l, element->bounds.r, position, position + height), false);
+			UIElementMove(child, UI_RECT_4(element->bounds.l + 2, element->bounds.r - 2, position, position + height), false);
 			position += height;
 			child = child->next;
+		}
+	} else if (message == UI_MSG_KEY_TYPED) {
+		UIKeyTyped *m = (UIKeyTyped *) dp;
+
+		if (m->code == UI_KEYCODE_ESCAPE) {
+			_UICloseMenus();
+			return 1;
 		}
 	}
 
@@ -2510,7 +2529,7 @@ UIMenu *UIMenuCreate(UIElement *parent, uint64_t flags) {
 	if (parent->parent) {
 		UIRectangle screenBounds = UIElementScreenBounds(parent);
 		menu->pointX = screenBounds.l;
-		menu->pointY = (flags & UI_MENU_PLACE_ABOVE) ? screenBounds.t : screenBounds.b;
+		menu->pointY = (flags & UI_MENU_PLACE_ABOVE) ? (screenBounds.t + 1) : (screenBounds.b - 1);
 	} else {
 		int x = 0, y = 0;
 		_UIWindowGetScreenPosition(parent->window, &x, &y);
@@ -3075,13 +3094,8 @@ void _UIWindowEndPaint(UIWindow *window, UIPainter *painter) {
 }
 
 void _UIWindowGetScreenPosition(UIWindow *window, int *_x, int *_y) {
-	int x, y;
 	Window child;
-	XWindowAttributes attributes;
-	XTranslateCoordinates(ui.display, window->window, DefaultRootWindow(ui.display), 0, 0, &x, &y, &child);
-	XGetWindowAttributes(ui.display, window->window, &attributes);
-	*_x = x - attributes.x; 
-	*_y = y - attributes.y;
+	XTranslateCoordinates(ui.display, window->window, DefaultRootWindow(ui.display), 0, 0, _x, _y, &child);
 }
 
 void UIMenuShow(UIMenu *menu) {
@@ -3108,7 +3122,12 @@ bool _UIProcessEvent(XEvent *event) {
 	// printf("x11 event: %d\n", event->type);
 
 	if (event->type == ClientMessage && (Atom) event->xclient.data.l[0] == ui.windowClosedID) {
-		return true;
+		UIWindow *window = _UIFindWindow(event->xclient.window);
+		if (!window) return false;
+		bool exit = !UIElementMessage(&window->e, UI_MSG_WINDOW_CLOSE, 0, 0);
+		if (exit) return true;
+		_UIUpdate();
+		return false;
 	} else if (event->type == Expose) {
 		UIWindow *window = _UIFindWindow(event->xexpose.window);
 		if (!window) return false;
@@ -3166,7 +3185,6 @@ bool _UIProcessEvent(XEvent *event) {
 
 		_UIInspectorSetFocusedWindow(window);
 	} else if (event->type == KeyPress) {
-
 		UIWindow *window = _UIFindWindow(event->xkey.window);
 		if (!window) return false;
 
@@ -3211,7 +3229,10 @@ bool _UIProcessEvent(XEvent *event) {
 		} else if (event->xkey.keycode == window->altCode) {
 			window->alt = false;
 		}
-
+	} else if (event->type == FocusIn) {
+		UIWindow *window = _UIFindWindow(event->xfocus.window);
+		if (!window) return false;
+		window->ctrl = window->shift = window->alt = false;
 	}
 
 	return false;
@@ -3314,7 +3335,12 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	}
 
 	if (message == WM_CLOSE) {
-		ExitProcess(0);
+		if (UIElementMessage(&window->e, UI_MSG_WINDOW_CLOSE, 0, 0)) {
+			_UIUpdate();
+			return 0;
+		} else {
+			ExitProcess(0);
+		}
 	} else if (message == WM_SIZE) {
 		RECT client;
 		GetClientRect(hwnd, &client);
@@ -3456,8 +3482,6 @@ int UIMessageLoop() {
 void UIMenuShow(UIMenu *menu) {
 	int width, height;
 	_UIMenuPrepare(menu, &width, &height);
-	RECT r = { 0, 0, width, height };
-	AdjustWindowRect(&r, WS_BORDER, FALSE);
 	MoveWindow(menu->e.window->hwnd, menu->pointX, menu->pointY, r.right - r.left, r.bottom - r.top, FALSE);
 	ShowWindow(menu->e.window->hwnd, SW_SHOWNOACTIVATE);
 }
@@ -3475,7 +3499,7 @@ UIWindow *UIWindowCreate(UIWindow *owner, uint64_t flags, const char *cTitle) {
 	if (flags & UI_WINDOW_MENU) {
 		UI_ASSERT(owner);
 
-		window->hwnd = CreateWindowEx(WS_EX_TOPMOST | WS_EX_NOACTIVATE, "shadow", 0, WS_BORDER | WS_POPUP, 
+		window->hwnd = CreateWindowEx(WS_EX_TOPMOST | WS_EX_NOACTIVATE, "shadow", 0, WS_POPUP, 
 			0, 0, 0, 0, owner->hwnd, NULL, NULL, NULL);
 	} else {
 		window->hwnd = CreateWindow("normal", cTitle, WS_OVERLAPPEDWINDOW, 
