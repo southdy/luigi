@@ -2,10 +2,80 @@
 
 // #define UI_LINUX
 #define UI_WINDOWS
+// #define UI_DEBUG
 #define UI_IMPLEMENTATION
 #include "luigi.h"
 
+UIWindow *window;
 UILabel *label;
+
+const char *themeItems[] = {
+	"panel1", 
+	"panel2",
+	"text", 
+	"border",
+	"buttonNormal", 
+	"buttonHovered", 
+	"buttonPressed", 
+	"buttonFocused",
+	"textboxNormal", 
+	"textboxText", 
+	"textboxFocused", 
+	"textboxSelected", 
+	"textboxSelectedText",
+	"scrollGlyph", 
+	"scrollThumbNormal", 
+	"scrollThumbHovered", 
+	"scrollThumbPressed",
+	"codeFocused", 
+	"codeBackground", 
+	"codeDefault", 
+	"codeComment", 
+	"codeString", 
+	"codeNumber", 
+	"codeOperator", 
+	"codePreprocessor",
+	"gaugeFilled",
+	"tableSelected", 
+	"tableSelectedText", 
+	"tableHovered", 
+	"tableHoveredText",
+};
+
+UIColorPicker *themeEditorColorPicker;
+UITable *themeEditorTable;
+int themeEditorSelectedColor = -1;
+
+int ThemeEditorTableMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	if (message == UI_MSG_TABLE_GET_ITEM) {
+		UITableGetItem *m = (UITableGetItem *) dp;
+		m->isSelected = themeEditorSelectedColor == m->index;
+
+		if (m->column == 0) {
+			return snprintf(m->buffer, m->bufferBytes, "%s", themeItems[m->index]);
+		} else {
+			return snprintf(m->buffer, m->bufferBytes, "#%.6x", ui.theme.colors[m->index]);
+		}
+	} else if (message == UI_MSG_CLICKED) {
+		themeEditorSelectedColor = UITableHitTest((UITable *) element, element->window->cursorX, element->window->cursorY);
+		UIColorToHSV(ui.theme.colors[themeEditorSelectedColor], 
+			&themeEditorColorPicker->hue, &themeEditorColorPicker->saturation, &themeEditorColorPicker->value);
+		UIElementRepaint(&themeEditorColorPicker->e, NULL);
+	}
+
+	return 0;
+}
+
+int ThemeEditorColorPickerMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	if (message == UI_MSG_VALUE_CHANGED) {
+		UIColorToRGB(themeEditorColorPicker->hue, themeEditorColorPicker->saturation, themeEditorColorPicker->value,
+			&ui.theme.colors[themeEditorSelectedColor]);
+		UIElementRepaint(&window->e, NULL);
+		UIElementRepaint(&element->window->e, NULL);
+	}
+
+	return 0;
+}
 
 int MyButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_CLICKED) {
@@ -68,9 +138,9 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 
 	UIInitialise();
 
-	UIWindow *window = UIWindowCreate(0, 0, "Test Window");
+	window = UIWindowCreate(0, 0, "Test Window");
 
-	UISplitPane *split1 = UISplitPaneCreate(&window->e, UI_SPLIT_PANE_VERTICAL, 0.5f);
+	UISplitPane *split1 = UISplitPaneCreate(&window->e, UI_SPLIT_PANE_VERTICAL, 0.8f);
 
 	UISplitPane *split3 = UISplitPaneCreate(&split1->e, 0, 0.3f);
 
@@ -94,7 +164,7 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 		FILE *f = fopen("luigi.h", "rb");
 		size_t size = fread(buffer, 1, 262144, f);
 		fclose(f);
-		UICodeSetContent(code, buffer, size);
+		UICodeInsertContent(code, buffer, size, true);
 		UICodeFocusLine(code, 0);
 	}
 
@@ -115,6 +185,17 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 	UITableResizeColumns(table);
 	UILabelCreate(&UIPanelCreate(&tabPane->e, UI_PANEL_GRAY)->e, 0, "you're in tab 2, bucko", -1);
 	UILabelCreate(&UIPanelCreate(&tabPane->e, UI_PANEL_GRAY)->e, 0, "hiii!!!", -1);
+
+	{
+		UIWindow *window = UIWindowCreate(0, 0, "Theme Editor");
+		UISplitPane *pane = UISplitPaneCreate(&window->e, 0, 0.5f);
+		themeEditorColorPicker = UIColorPickerCreate(&UIPanelCreate(&pane->e, UI_PANEL_GRAY)->e, 0);
+		themeEditorColorPicker->e.messageUser = ThemeEditorColorPickerMessage;
+		themeEditorTable = UITableCreate(&pane->e, 0, "Item\tColor");
+		themeEditorTable->itemCount = sizeof(themeItems) / sizeof(themeItems[0]);
+		themeEditorTable->e.messageUser = ThemeEditorTableMessage;
+		UITableResizeColumns(themeEditorTable);
+	}
 
 	UIWindowRegisterShortcut(window, (UIShortcut) { .code = UI_KEYCODE_LETTER('T'), .ctrl = true, .invoke = MyMenuCallback, .cp = (void *) "Keyboard shortcut!" });
 
