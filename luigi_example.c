@@ -138,7 +138,7 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 
 	UIInitialise();
 
-	window = UIWindowCreate(0, 0, "Test Window");
+	window = UIWindowCreate(0, 0, "Test Window", 0, 0);
 
 	UISplitPane *split1 = UISplitPaneCreate(&window->e, UI_SPLIT_PANE_VERTICAL, 0.8f);
 
@@ -187,7 +187,7 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 	UILabelCreate(&UIPanelCreate(&tabPane->e, UI_PANEL_GRAY)->e, 0, "hiii!!!", -1);
 
 	{
-		UIWindow *window = UIWindowCreate(0, 0, "Theme Editor");
+		UIWindow *window = UIWindowCreate(0, 0, "Theme Editor", 0, 0);
 		UISplitPane *pane = UISplitPaneCreate(&window->e, 0, 0.5f);
 		themeEditorColorPicker = UIColorPickerCreate(&UIPanelCreate(&pane->e, UI_PANEL_GRAY)->e, 0);
 		themeEditorColorPicker->e.messageUser = ThemeEditorColorPickerMessage;
