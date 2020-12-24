@@ -1331,7 +1331,7 @@ int _UISplitterMessage(UIElement *element, UIMessage message, int di, void *dp) 
 		int cursor = vertical ? element->window->cursorY : element->window->cursorX;
 		int splitterSize = UI_SIZE_SPLITTER * element->window->scale;
 		int space = (vertical ? UI_RECT_HEIGHT(splitPane->e.bounds) : UI_RECT_WIDTH(splitPane->e.bounds)) - splitterSize;
-		splitPane->weight = (float) (cursor - splitterSize / 2) / space;
+		splitPane->weight = (float) (cursor - splitterSize / 2 - splitPane->e.bounds.l) / space;
 		if (splitPane->weight < 0.05f) splitPane->weight = 0.05f;
 		if (splitPane->weight > 0.95f) splitPane->weight = 0.95f;
 		UIElementRefresh(&splitPane->e);
