@@ -409,7 +409,7 @@ typedef struct UIScrollBar {
 	int64_t maximum, page;
 	int64_t dragOffset;
 	double position;
-	UI_CLOCK_T lastAnimateTime;
+	uint64_t lastAnimateTime;
 	bool inDrag;
 } UIScrollBar;
 
