@@ -1319,6 +1319,8 @@ UILabel *UILabelCreate(UIElement *parent, uint64_t flags, const char *string, pt
 	return label;
 }
 
+int _UISplitPaneMessage(UIElement *element, UIMessage message, int di, void *dp);
+
 int _UISplitterMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	UISplitPane *splitPane = (UISplitPane *) element->parent;
 	bool vertical = splitPane->e.flags & UI_SPLIT_PANE_VERTICAL;
@@ -1332,9 +1334,18 @@ int _UISplitterMessage(UIElement *element, UIMessage message, int di, void *dp) 
 		int cursor = vertical ? element->window->cursorY : element->window->cursorX;
 		int splitterSize = UI_SIZE_SPLITTER * element->window->scale;
 		int space = (vertical ? UI_RECT_HEIGHT(splitPane->e.bounds) : UI_RECT_WIDTH(splitPane->e.bounds)) - splitterSize;
+		float oldWeight = splitPane->weight;
 		splitPane->weight = (float) (cursor - splitterSize / 2 - splitPane->e.bounds.l) / space;
 		if (splitPane->weight < 0.05f) splitPane->weight = 0.05f;
 		if (splitPane->weight > 0.95f) splitPane->weight = 0.95f;
+
+		if (element->next->next->messageClass == _UISplitPaneMessage) {
+			UISplitPane *subSplitPane = (UISplitPane *) element->next->next;
+			subSplitPane->weight = (splitPane->weight - oldWeight - subSplitPane->weight + oldWeight * subSplitPane->weight) / (-1 + splitPane->weight);
+			if (subSplitPane->weight < 0.05f) subSplitPane->weight = 0.05f;
+			if (subSplitPane->weight > 0.95f) subSplitPane->weight = 0.95f;
+		}
+
 		UIElementRefresh(&splitPane->e);
 	}
 
