@@ -2,6 +2,8 @@
 
 A barebones single-header GUI library for Win32 and X11. 
 
+![Screenshot showing an example interface with buttons, split panes, tab panes, sliders, gauges, labels, scrollbars, tables and code views.](https://cdn.discordapp.com/attachments/462643277321994245/792434182348341268/unknown.png)
+
 ## Building example
 
 ### Windows
