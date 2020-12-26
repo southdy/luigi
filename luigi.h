@@ -1,13 +1,13 @@
 // TODO Scaling; include a larger font?
 // TODO Better math functions.
 // TODO UIScrollBar - horizontal.
-// TODO UITable - take column label into account when resizing columns.
 // TODO UIPanel - scrolling; more alignment options.
+// TODO UIButton, UITextbox, UISlider - disabled state
 // TODO Keyboard navigation:
 // 	- menus
 // 	- tabbing
 // 	- dialogs
-// TODO Textbox features:
+// TODO UITextbox features:
 // 	- mouse input
 // 	- multi-line 
 // 	- clipboard
@@ -179,6 +179,11 @@ typedef struct UITheme {
 #define UI_SIZE_TABLE_HEADER (26)
 #define UI_SIZE_TABLE_COLUMN_GAP (20)
 
+#define UI_SIZE_PANE_MEDIUM_BORDER (5)
+#define UI_SIZE_PANE_MEDIUM_GAP (5)
+#define UI_SIZE_PANE_SMALL_BORDER (3)
+#define UI_SIZE_PANE_SMALL_GAP (3)
+
 typedef enum UIMessage {
 	UI_MSG_PAINT, // dp = pointer to UIPainter
 	UI_MSG_LAYOUT,
@@ -278,15 +283,17 @@ typedef struct UIPainter {
 } UIPainter;
 
 typedef struct UIElement {
-#define UI_ELEMENT_V_FILL ((uint64_t) 1 << 32)
-#define UI_ELEMENT_H_FILL ((uint64_t) 1 << 33)
+#define UI_ELEMENT_V_FILL (1 << 16)
+#define UI_ELEMENT_H_FILL (1 << 17)
+#define UI_ELEMENT_WINDOW (1 << 18)
+#define UI_ELEMENT_PARENT_PUSH (1 << 19)
 
-#define UI_ELEMENT_REPAINT ((uint64_t) 1 << 48)
-#define UI_ELEMENT_HIDE ((uint64_t) 1 << 49)
-#define UI_ELEMENT_DESTROY ((uint64_t) 1 << 50)
-#define UI_ELEMENT_DESTROY_DESCENDENT ((uint64_t) 1 << 51)
+#define UI_ELEMENT_REPAINT (1 << 20)
+#define UI_ELEMENT_HIDE (1 << 21)
+#define UI_ELEMENT_DESTROY (1 << 22)
+#define UI_ELEMENT_DESTROY_DESCENDENT (1 << 23)
 
-	uint64_t flags; // First 32 bits are element specific.
+	uint32_t flags; // First 16 bits are element specific.
 
 	struct UIElement *parent;
 	struct UIElement *next;
@@ -356,6 +363,8 @@ typedef struct UIPanel {
 #define UI_PANEL_GRAY (1 << 2)
 #define UI_PANEL_WHITE (1 << 3)
 #define UI_PANEL_EXPAND (1 << 4)
+#define UI_PANEL_MEDIUM_SPACING (1 << 5)
+#define UI_PANEL_SMALL_SPACING (1 << 6)
 	UIElement e;
 	UIRectangle border;
 	int gap;
@@ -460,42 +469,42 @@ typedef struct UIColorPicker {
 void UIInitialise();
 int UIMessageLoop();
 
-UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint64_t flags, 
+UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint32_t flags, 
 	int (*messageClass)(UIElement *, UIMessage, int, void *), const char *cClassName);
 
-UIButton *UIButtonCreate(UIElement *parent, uint64_t flags, const char *label, ptrdiff_t labelBytes);
-UIColorPicker *UIColorPickerCreate(UIElement *parent, uint64_t flags);
-UIGauge *UIGaugeCreate(UIElement *parent, uint64_t flags);
-UIPanel *UIPanelCreate(UIElement *parent, uint64_t flags);
-UIScrollBar *UIScrollBarCreate(UIElement *parent, uint64_t flags);
-UISlider *UISliderCreate(UIElement *parent, uint64_t flags);
-UISpacer *UISpacerCreate(UIElement *parent, uint64_t flags, int width, int height);
-UISplitPane *UISplitPaneCreate(UIElement *parent, uint64_t flags, float weight);
-UITabPane *UITabPaneCreate(UIElement *parent, uint64_t flags, const char *tabs /* separate with \t, terminate with \0 */);
-UITextbox *UITextboxCreate(UIElement *parent, uint64_t flags);
+UIButton *UIButtonCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
+UIColorPicker *UIColorPickerCreate(UIElement *parent, uint32_t flags);
+UIGauge *UIGaugeCreate(UIElement *parent, uint32_t flags);
+UIPanel *UIPanelCreate(UIElement *parent, uint32_t flags);
+UIScrollBar *UIScrollBarCreate(UIElement *parent, uint32_t flags);
+UISlider *UISliderCreate(UIElement *parent, uint32_t flags);
+UISpacer *UISpacerCreate(UIElement *parent, uint32_t flags, int width, int height);
+UISplitPane *UISplitPaneCreate(UIElement *parent, uint32_t flags, float weight);
+UITabPane *UITabPaneCreate(UIElement *parent, uint32_t flags, const char *tabs /* separate with \t, terminate with \0 */);
+UITextbox *UITextboxCreate(UIElement *parent, uint32_t flags);
 
-UILabel *UILabelCreate(UIElement *parent, uint64_t flags, const char *label, ptrdiff_t labelBytes);
+UILabel *UILabelCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
 void UILabelSetContent(UILabel *code, const char *content, ptrdiff_t byteCount);
 
-UIWindow *UIWindowCreate(UIWindow *owner, uint64_t flags, const char *cTitle, int width, int height);
+UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int width, int height);
 void UIWindowRegisterShortcut(UIWindow *window, UIShortcut shortcut);
 void UIWindowPostMessage(UIWindow *window, UIMessage message, void *dp); // Thread-safe.
 
-UIMenu *UIMenuCreate(UIElement *parent, uint64_t flags);
-void UIMenuAddItem(UIMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, void (*invoke)(void *cp), void *cp);
+UIMenu *UIMenuCreate(UIElement *parent, uint32_t flags);
+void UIMenuAddItem(UIMenu *menu, uint32_t flags, const char *label, ptrdiff_t labelBytes, void (*invoke)(void *cp), void *cp);
 void UIMenuShow(UIMenu *menu);
 
-UITextbox *UITextboxCreate(UIElement *parent, uint64_t flags);
+UITextbox *UITextboxCreate(UIElement *parent, uint32_t flags);
 void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, bool sendChangedMessage);
 void UITextboxClear(UITextbox *textbox, bool sendChangedMessage);
 void UITextboxMoveCaret(UITextbox *textbox, bool backward, bool word);
 
-UITable *UITableCreate(UIElement *parent, uint64_t flags, const char *columns /* separate with \t, terminate with \0 */);
+UITable *UITableCreate(UIElement *parent, uint32_t flags, const char *columns /* separate with \t, terminate with \0 */);
 int UITableHitTest(UITable *table, int x, int y); // Returns item index. Returns -1 if not on an item.
 bool UITableEnsureVisible(UITable *table, int index); // Returns false if the item was already visible.
 void UITableResizeColumns(UITable *table);
 
-UICode *UICodeCreate(UIElement *parent, uint64_t flags);
+UICode *UICodeCreate(UIElement *parent, uint32_t flags);
 void UICodeFocusLine(UICode *code, int index); // Line numbers are 1-indexed!!
 int UICodeHitTest(UICode *code, int x, int y); // Returns line number; negates if in margin. Returns 0 if not on a line.
 void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount, bool replace);
@@ -519,6 +528,9 @@ void UIElementRepaint(UIElement *element, UIRectangle *region);
 void UIElementMove(UIElement *element, UIRectangle bounds, bool alwaysLayout);
 int UIElementMessage(UIElement *element, UIMessage message, int di, void *dp);
 
+UIElement *UIParentPush(UIElement *element);
+void UIParentPop();
+
 UIRectangle UIRectangleIntersection(UIRectangle a, UIRectangle b);
 UIRectangle UIRectangleBounding(UIRectangle a, UIRectangle b);
 UIRectangle UIRectangleAdd(UIRectangle a, UIRectangle b);
@@ -535,6 +547,9 @@ struct {
 	UIWindow *windows;
 	UIElement *animating;
 	UITheme theme;
+
+	UIElement *parentStack[16];
+	int parentStackCount;
 
 #ifdef UI_DEBUG
 	UIWindow *inspector;
@@ -556,7 +571,7 @@ struct {
 #endif
 } ui;
 
-UITheme _uiThemeDefault = {
+UITheme _uiThemeClassic = {
 	{{
 		.panel1 = 0xF0F0F0,
 		.panel2 = 0xFFFFFF,
@@ -588,6 +603,49 @@ UITheme _uiThemeDefault = {
 		.codeString = 0xF5DDD1,
 		.codeNumber = 0xD1F5DD,
 		.codeOperator = 0xF5F3D1,
+		.codePreprocessor = 0xF5F3D1,
+
+		.gaugeFilled = 0x2CE342,
+
+		.tableSelected = 0x94BEFE,
+		.tableSelectedText = 0x000000,
+		.tableHovered = 0xD3E4FF,
+		.tableHoveredText = 0x000000,
+	}},
+};
+
+UITheme _uiThemeDark = {
+	{{
+		.panel1 = 0x1B1F23,
+		.panel2 = 0x0B0D11,
+
+		.text = 0xFFFFFF,
+
+		.border = 0x000000,
+
+		.buttonNormal = 0x383D41,
+		.buttonHovered = 0x4B5874,
+		.buttonPressed = 0x0D0D0F,
+		.buttonFocused = 0x6290E0,
+
+		.textboxNormal = 0x31353C,
+		.textboxText = 0xFFFFFF,
+		.textboxFocused = 0x4D4D59,
+		.textboxSelected = 0xBCC4F0,
+		.textboxSelectedText = 0x000000,
+
+		.scrollGlyph = 0x9C9C9C,
+		.scrollThumbNormal = 0xB0B0B0,
+		.scrollThumbHovered = 0xD0D0D0,
+		.scrollThumbPressed = 0x909090,
+
+		.codeFocused = 0x505055,
+		.codeBackground = 0x212126,
+		.codeDefault = 0xFFFFFF,
+		.codeComment = 0xB4B4B4,
+		.codeString = 0xF5DDD1,
+		.codeNumber = 0xC3F5D3,
+		.codeOperator = 0xF5D499,
 		.codePreprocessor = 0xF5F3D1,
 
 		.gaugeFilled = 0x2CE342,
@@ -1041,12 +1099,17 @@ int UIElementMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	}
 }
 
-UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint64_t flags, int (*message)(UIElement *, UIMessage, int, void *), const char *cClassName) {
+UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint32_t flags, int (*message)(UIElement *, UIMessage, int, void *), const char *cClassName) {
 	UI_ASSERT(bytes >= sizeof(UIElement));
 	UIElement *element = (UIElement *) UI_CALLOC(bytes);
 	element->flags = flags;
 	element->parent = parent;
 	element->messageClass = message;
+
+	if (!parent && (~flags & UI_ELEMENT_WINDOW)) {
+		UI_ASSERT(ui.parentStackCount);
+		parent = ui.parentStack[ui.parentStackCount - 1];
+	}
 
 	if (parent) {
 		element->window = parent->window;
@@ -1074,7 +1137,22 @@ UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint64_t flags, int 
 	_UIInspectorRefresh();
 #endif
 
+	if (flags & UI_ELEMENT_PARENT_PUSH) {
+		UIParentPush(element);
+	}
+
 	return element;
+}
+
+UIElement *UIParentPush(UIElement *element) {
+	UI_ASSERT(ui.parentStackCount != sizeof(ui.parentStack) / sizeof(ui.parentStack[0]));
+	ui.parentStack[ui.parentStackCount++] = element;
+	return element;
+}
+
+void UIParentPop() {
+	UI_ASSERT(ui.parentStackCount);
+	ui.parentStackCount--;
 }
 
 int _UIPanelMeasure(UIPanel *panel) {
@@ -1215,8 +1293,18 @@ int _UIPanelMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UIPanel *UIPanelCreate(UIElement *parent, uint64_t flags) {
-	return (UIPanel *) UIElementCreate(sizeof(UIPanel), parent, flags, _UIPanelMessage, "Panel");
+UIPanel *UIPanelCreate(UIElement *parent, uint32_t flags) {
+	UIPanel *panel = (UIPanel *) UIElementCreate(sizeof(UIPanel), parent, flags, _UIPanelMessage, "Panel");
+
+	if (flags & UI_PANEL_MEDIUM_SPACING) {
+		panel->border = UI_RECT_1(UI_SIZE_PANE_MEDIUM_BORDER);
+		panel->gap = UI_SIZE_PANE_MEDIUM_GAP;
+	} else if (flags & UI_PANEL_SMALL_SPACING) {
+		panel->border = UI_RECT_1(UI_SIZE_PANE_SMALL_BORDER);
+		panel->gap = UI_SIZE_PANE_SMALL_GAP;
+	}
+
+	return panel;
 }
 
 int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
@@ -1288,7 +1376,7 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UIButton *UIButtonCreate(UIElement *parent, uint64_t flags, const char *label, ptrdiff_t labelBytes) {
+UIButton *UIButtonCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes) {
 	UIButton *button = (UIButton *) UIElementCreate(sizeof(UIButton), parent, flags, _UIButtonMessage, "Button");
 	button->label = _UIStringCopy(label, (button->labelBytes = labelBytes));
 	return button;
@@ -1316,7 +1404,7 @@ void UILabelSetContent(UILabel *label, const char *string, ptrdiff_t stringBytes
 	label->label = _UIStringCopy(string, (label->labelBytes = stringBytes));
 }
 
-UILabel *UILabelCreate(UIElement *parent, uint64_t flags, const char *string, ptrdiff_t stringBytes) {
+UILabel *UILabelCreate(UIElement *parent, uint32_t flags, const char *string, ptrdiff_t stringBytes) {
 	UILabel *label = (UILabel *) UIElementCreate(sizeof(UILabel), parent, flags, _UILabelMessage, "Label");
 	label->label = _UIStringCopy(string, (label->labelBytes = stringBytes));
 	return label;
@@ -1342,7 +1430,8 @@ int _UISplitterMessage(UIElement *element, UIMessage message, int di, void *dp) 
 		if (splitPane->weight < 0.05f) splitPane->weight = 0.05f;
 		if (splitPane->weight > 0.95f) splitPane->weight = 0.95f;
 
-		if (element->next->next->messageClass == _UISplitPaneMessage) {
+		if (element->next->next->messageClass == _UISplitPaneMessage 
+				&& (element->next->next->flags & UI_SPLIT_PANE_VERTICAL) == (splitPane->e.flags & UI_SPLIT_PANE_VERTICAL)) {
 			UISplitPane *subSplitPane = (UISplitPane *) element->next->next;
 			subSplitPane->weight = (splitPane->weight - oldWeight - subSplitPane->weight + oldWeight * subSplitPane->weight) / (-1 + splitPane->weight);
 			if (subSplitPane->weight < 0.05f) subSplitPane->weight = 0.05f;
@@ -1387,7 +1476,7 @@ int _UISplitPaneMessage(UIElement *element, UIMessage message, int di, void *dp)
 	return 0;
 }
 
-UISplitPane *UISplitPaneCreate(UIElement *parent, uint64_t flags, float weight) {
+UISplitPane *UISplitPaneCreate(UIElement *parent, uint32_t flags, float weight) {
 	UISplitPane *splitPane = (UISplitPane *) UIElementCreate(sizeof(UISplitPane), parent, flags, _UISplitPaneMessage, "Split Pane");
 	splitPane->weight = weight;
 	UIElementCreate(sizeof(UIElement), &splitPane->e, 0, _UISplitterMessage, "Splitter");
@@ -1496,7 +1585,7 @@ int _UITabPaneMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UITabPane *UITabPaneCreate(UIElement *parent, uint64_t flags, const char *tabs) {
+UITabPane *UITabPaneCreate(UIElement *parent, uint32_t flags, const char *tabs) {
 	UITabPane *tabPane = (UITabPane *) UIElementCreate(sizeof(UITabPane), parent, flags, _UITabPaneMessage, "Tab Pane");
 	tabPane->tabs = _UIStringCopy(tabs, -1);
 	return tabPane;
@@ -1516,7 +1605,7 @@ int _UISpacerMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UISpacer *UISpacerCreate(UIElement *parent, uint64_t flags, int width, int height) {
+UISpacer *UISpacerCreate(UIElement *parent, uint32_t flags, int width, int height) {
 	UISpacer *spacer = (UISpacer *) UIElementCreate(sizeof(UISpacer), parent, flags, _UISpacerMessage, "Spacer");
 	spacer->width = width;
 	spacer->height = height;
@@ -1651,7 +1740,7 @@ int _UIScrollThumbMessage(UIElement *element, UIMessage message, int di, void *d
 	return 0;
 }
 
-UIScrollBar *UIScrollBarCreate(UIElement *parent, uint64_t flags) {
+UIScrollBar *UIScrollBarCreate(UIElement *parent, uint32_t flags) {
 	UIScrollBar *scrollBar = (UIScrollBar *) UIElementCreate(sizeof(UIScrollBar), parent, flags, _UIScrollBarMessage, "Scroll Bar");
 	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollUpDownMessage, "Scroll Up")->cp = (void *) (uintptr_t) 0;
 	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollThumbMessage, "Scroll Thumb");
@@ -1916,7 +2005,7 @@ void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount,
 	}
 }
 
-UICode *UICodeCreate(UIElement *parent, uint64_t flags) {
+UICode *UICodeCreate(UIElement *parent, uint32_t flags) {
 	UICode *code = (UICode *) UIElementCreate(sizeof(UICode), parent, flags, _UICodeMessage, "Code");
 	code->vScroll = UIScrollBarCreate(&code->e, 0);
 	code->focused = -1;
@@ -1941,7 +2030,7 @@ int _UIGaugeMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UIGauge *UIGaugeCreate(UIElement *parent, uint64_t flags) {
+UIGauge *UIGaugeCreate(UIElement *parent, uint32_t flags) {
 	return (UIGauge *) UIElementCreate(sizeof(UIGauge), parent, flags, _UIGaugeMessage, "Gauge");
 }
 
@@ -1981,7 +2070,7 @@ int _UISliderMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UISlider *UISliderCreate(UIElement *parent, uint64_t flags) {
+UISlider *UISliderCreate(UIElement *parent, uint32_t flags) {
 	return (UISlider *) UIElementCreate(sizeof(UISlider), parent, flags, _UISliderMessage, "Slider");
 }
 
@@ -2168,7 +2257,7 @@ int _UITableMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UITable *UITableCreate(UIElement *parent, uint64_t flags, const char *columns) {
+UITable *UITableCreate(UIElement *parent, uint32_t flags, const char *columns) {
 	UITable *table = (UITable *) UIElementCreate(sizeof(UITable), parent, flags, _UITableMessage, "Table");
 	table->vScroll = UIScrollBarCreate(&table->e, 0);
 	table->columns = _UIStringCopy(columns, -1);
@@ -2333,7 +2422,7 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UITextbox *UITextboxCreate(UIElement *parent, uint64_t flags) {
+UITextbox *UITextboxCreate(UIElement *parent, uint32_t flags) {
 	return (UITextbox *) UIElementCreate(sizeof(UITextbox), parent, flags, _UITextboxMessage, "Textbox");
 }
 
@@ -2454,7 +2543,7 @@ int _UIColorPickerMessage(UIElement *element, UIMessage message, int di, void *d
 	return 0;
 }
 
-UIColorPicker *UIColorPickerCreate(UIElement *parent, uint64_t flags) {
+UIColorPicker *UIColorPickerCreate(UIElement *parent, uint32_t flags) {
 	UIColorPicker *colorPicker = (UIColorPicker *) UIElementCreate(sizeof(UIColorPicker), parent, flags, _UIColorPickerMessage, "ColorPicker");
 	UIElementCreate(sizeof(UIElement), &colorPicker->e, 0, _UIColorCircleMessage, "ColorCircle");
 	UIElementCreate(sizeof(UIElement), &colorPicker->e, 0, _UIColorValueSliderMessage, "ColorValueSlider");
@@ -2531,7 +2620,7 @@ int _UIMenuMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-void UIMenuAddItem(UIMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, void (*invoke)(void *cp), void *cp) {
+void UIMenuAddItem(UIMenu *menu, uint32_t flags, const char *label, ptrdiff_t labelBytes, void (*invoke)(void *cp), void *cp) {
 	UIButton *button = UIButtonCreate(&menu->e, flags | UI_BUTTON_MENU_ITEM, label, labelBytes);
 	button->invoke = invoke;
 	button->e.messageUser = _UIMenuItemMessage;
@@ -2547,7 +2636,7 @@ void _UIMenuPrepare(UIMenu *menu, int *width, int *height) {
 	}
 }
 
-UIMenu *UIMenuCreate(UIElement *parent, uint64_t flags) {
+UIMenu *UIMenuCreate(UIElement *parent, uint32_t flags) {
 	UIWindow *window = UIWindowCreate(parent->window, UI_WINDOW_MENU, 0, 0, 0);
 	
 	UIMenu *menu = (UIMenu *) UIElementCreate(sizeof(UIMenu), &window->e, flags, _UIMenuMessage, "Menu");
@@ -3039,10 +3128,10 @@ int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-UIWindow *UIWindowCreate(UIWindow *owner, uint64_t flags, const char *cTitle, int _width, int _height) {
+UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int _width, int _height) {
 	_UICloseMenus();
 
-	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags, _UIWindowMessage, "Window");
+	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags | UI_ELEMENT_WINDOW, _UIWindowMessage, "Window");
 	window->scale = 1.0f;
 	window->e.window = window;
 	window->hovered = &window->e;
@@ -3072,7 +3161,7 @@ UIWindow *UIWindowCreate(UIWindow *owner, uint64_t flags, const char *cTitle, in
 }
 
 void UIInitialise() {
-	ui.theme = _uiThemeDefault;
+	ui.theme = _uiThemeDark;
 
 	XInitThreads();
 
@@ -3464,7 +3553,7 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 }
 
 void UIInitialise() {
-	ui.theme = _uiThemeDefault;
+	ui.theme = _uiThemeDark;
 
 	ui.cursors[UI_CURSOR_ARROW] = LoadCursor(NULL, IDC_ARROW);
 	ui.cursors[UI_CURSOR_TEXT] = LoadCursor(NULL, IDC_IBEAM);
@@ -3516,10 +3605,10 @@ void UIMenuShow(UIMenu *menu) {
 	ShowWindow(menu->e.window->hwnd, SW_SHOWNOACTIVATE);
 }
 
-UIWindow *UIWindowCreate(UIWindow *owner, uint64_t flags, const char *cTitle, int width, int height) {
+UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int width, int height) {
 	_UICloseMenus();
 
-	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags, _UIWindowMessage, "Window");
+	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags | UI_ELEMENT_WINDOW, _UIWindowMessage, "Window");
 	window->scale = 1.0f;
 	window->e.window = window;
 	window->hovered = &window->e;
