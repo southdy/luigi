@@ -1335,7 +1335,7 @@ int _UISplitterMessage(UIElement *element, UIMessage message, int di, void *dp) 
 		int splitterSize = UI_SIZE_SPLITTER * element->window->scale;
 		int space = (vertical ? UI_RECT_HEIGHT(splitPane->e.bounds) : UI_RECT_WIDTH(splitPane->e.bounds)) - splitterSize;
 		float oldWeight = splitPane->weight;
-		splitPane->weight = (float) (cursor - splitterSize / 2 - splitPane->e.bounds.l) / space;
+		splitPane->weight = (float) (cursor - splitterSize / 2 - (vertical ? splitPane->e.bounds.t : splitPane->e.bounds.l)) / space;
 		if (splitPane->weight < 0.05f) splitPane->weight = 0.05f;
 		if (splitPane->weight > 0.95f) splitPane->weight = 0.95f;
 
@@ -1568,8 +1568,10 @@ int _UIScrollBarMessage(UIElement *element, UIMessage message, int di, void *dp)
 			r.t = r.b, r.b = element->bounds.b;
 			UIElementMove(down, r, false);
 		}
-	} else if (message == UI_MSG_PAINT && (scrollBar->page >= scrollBar->maximum || scrollBar->maximum <= 0 || scrollBar->page <= 0)) {
-		UIDrawBlock((UIPainter *) dp, element->bounds, ui.theme.panel2);
+	} else if (message == UI_MSG_PAINT) {
+		if (scrollBar->page >= scrollBar->maximum || scrollBar->maximum <= 0 || scrollBar->page <= 0) {
+			UIDrawBlock((UIPainter *) dp, element->bounds, ui.theme.panel1);
+		}
 	} else if (message == UI_MSG_MOUSE_WHEEL) {
 		scrollBar->position += di;
 		UIElementRefresh(element);
