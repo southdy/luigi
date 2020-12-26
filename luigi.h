@@ -46,32 +46,6 @@
 #define UI_CLOCK clock
 #define UI_CLOCKS_PER_SECOND CLOCKS_PER_SEC
 #define UI_CLOCK_T clock_t
-
-#define UI_KEYCODE_A XK_a
-#define UI_KEYCODE_BACKSPACE XK_BackSpace
-#define UI_KEYCODE_DELETE XK_Delete
-#define UI_KEYCODE_DOWN XK_Down
-#define UI_KEYCODE_END XK_End
-#define UI_KEYCODE_ENTER XK_Return
-#define UI_KEYCODE_ESCAPE XK_Escape
-#define UI_KEYCODE_F1 XK_F1
-#define UI_KEYCODE_F10 XK_F10
-#define UI_KEYCODE_F11 XK_F11
-#define UI_KEYCODE_F12 XK_F12
-#define UI_KEYCODE_F2 XK_F2
-#define UI_KEYCODE_F3 XK_F3
-#define UI_KEYCODE_F4 XK_F4
-#define UI_KEYCODE_F5 XK_F5
-#define UI_KEYCODE_F6 XK_F6
-#define UI_KEYCODE_F7 XK_F7
-#define UI_KEYCODE_F8 XK_F8
-#define UI_KEYCODE_F9 XK_F9
-#define UI_KEYCODE_HOME XK_Home
-#define UI_KEYCODE_LEFT XK_Left
-#define UI_KEYCODE_RIGHT XK_Right
-#define UI_KEYCODE_SPACE XK_space
-#define UI_KEYCODE_TAB XK_Tab
-#define UI_KEYCODE_UP XK_Up
 #endif
 
 #ifdef UI_WINDOWS
@@ -89,32 +63,6 @@
 #define UI_CLOCK GetTickCount
 #define UI_CLOCKS_PER_SECOND (1000)
 #define UI_CLOCK_T DWORD
-
-#define UI_KEYCODE_A 'A'
-#define UI_KEYCODE_BACKSPACE VK_BACK
-#define UI_KEYCODE_DELETE VK_DELETE
-#define UI_KEYCODE_DOWN VK_DOWN
-#define UI_KEYCODE_END VK_END
-#define UI_KEYCODE_ENTER VK_RETURN
-#define UI_KEYCODE_ESCAPE VK_ESCAPE
-#define UI_KEYCODE_F1 VK_F1
-#define UI_KEYCODE_F10 VK_F10
-#define UI_KEYCODE_F11 VK_F11
-#define UI_KEYCODE_F12 VK_F12
-#define UI_KEYCODE_F2 VK_F2
-#define UI_KEYCODE_F3 VK_F3
-#define UI_KEYCODE_F4 VK_F4
-#define UI_KEYCODE_F5 VK_F5
-#define UI_KEYCODE_F6 VK_F6
-#define UI_KEYCODE_F7 VK_F7
-#define UI_KEYCODE_F8 VK_F8
-#define UI_KEYCODE_F9 VK_F9
-#define UI_KEYCODE_HOME VK_HOME
-#define UI_KEYCODE_LEFT VK_LEFT
-#define UI_KEYCODE_RIGHT VK_RIGHT
-#define UI_KEYCODE_SPACE VK_SPACE
-#define UI_KEYCODE_TAB VK_TAB
-#define UI_KEYCODE_UP VK_UP
 #endif
 
 #ifdef UI_DEBUG
@@ -280,6 +228,9 @@ typedef struct UIPainter {
 	UIRectangle clip;
 	uint32_t *bits;
 	int width, height;
+#ifdef UI_DEBUG
+	int fillCount;
+#endif
 } UIPainter;
 
 typedef struct UIElement {
@@ -320,6 +271,8 @@ typedef struct UIShortcut {
 	void *cp;
 } UIShortcut;
 
+#define UI_SHORTCUT(code, ctrl, shift, alt, invoke, cp) ((UIShortcut) { (code), (ctrl), (shift), (alt), (invoke), (cp) })
+
 typedef struct UIWindow {
 #define UI_WINDOW_MENU (1 << 0)
 #define UI_WINDOW_INSPECTOR (1 << 1)
@@ -344,6 +297,10 @@ typedef struct UIWindow {
 	bool ctrl, shift, alt;
 
 	UIRectangle updateRegion;
+
+#ifdef UI_DEBUG
+	float lastFullFillCount;
+#endif
 
 #ifdef UI_LINUX
 	Window window;
@@ -540,6 +497,32 @@ bool UIRectangleContains(UIRectangle a, int x, int y);
 
 bool UIColorToHSV(uint32_t rgb, float *hue, float *saturation, float *value);
 void UIColorToRGB(float hue, float saturation, float value, uint32_t *rgb);
+
+extern const int UI_KEYCODE_A;
+extern const int UI_KEYCODE_BACKSPACE;
+extern const int UI_KEYCODE_DELETE;
+extern const int UI_KEYCODE_DOWN;
+extern const int UI_KEYCODE_END;
+extern const int UI_KEYCODE_ENTER;
+extern const int UI_KEYCODE_ESCAPE;
+extern const int UI_KEYCODE_F1;
+extern const int UI_KEYCODE_F10;
+extern const int UI_KEYCODE_F11;
+extern const int UI_KEYCODE_F12;
+extern const int UI_KEYCODE_F2;
+extern const int UI_KEYCODE_F3;
+extern const int UI_KEYCODE_F4;
+extern const int UI_KEYCODE_F5;
+extern const int UI_KEYCODE_F6;
+extern const int UI_KEYCODE_F7;
+extern const int UI_KEYCODE_F8;
+extern const int UI_KEYCODE_F9;
+extern const int UI_KEYCODE_HOME;
+extern const int UI_KEYCODE_LEFT;
+extern const int UI_KEYCODE_RIGHT;
+extern const int UI_KEYCODE_SPACE;
+extern const int UI_KEYCODE_TAB;
+extern const int UI_KEYCODE_UP;
 
 #ifdef UI_IMPLEMENTATION
 
@@ -924,6 +907,10 @@ void UIDrawBlock(UIPainter *painter, UIRectangle rectangle, uint32_t color) {
 			*bits++ = color;
 		}
 	}
+
+#ifdef UI_DEBUG
+	painter->fillCount += UI_RECT_WIDTH(rectangle) * UI_RECT_HEIGHT(rectangle);
+#endif
 }
 
 void UIDrawInvert(UIPainter *painter, UIRectangle rectangle) {
@@ -2820,6 +2807,10 @@ void _UIUpdate() {
 				painter.clip = UI_RECT_2S(window->width, window->height);
 				_UIElementPaint(&window->e, &painter, true);
 				_UIWindowEndPaint(window, &painter);
+
+#ifdef UI_DEBUG
+				window->lastFullFillCount = (float) painter.fillCount / (UI_RECT_WIDTH(window->updateRegion) * UI_RECT_HEIGHT(window->updateRegion));
+#endif
 			}
 		}
 
@@ -3111,6 +3102,32 @@ void _UIInspectorRefresh() {}
 #endif
 
 #ifdef UI_LINUX
+
+const int UI_KEYCODE_A = XK_a;
+const int UI_KEYCODE_BACKSPACE = XK_BackSpace;
+const int UI_KEYCODE_DELETE = XK_Delete;
+const int UI_KEYCODE_DOWN = XK_Down;
+const int UI_KEYCODE_END = XK_End;
+const int UI_KEYCODE_ENTER = XK_Return;
+const int UI_KEYCODE_ESCAPE = XK_Escape;
+const int UI_KEYCODE_F1 = XK_F1;
+const int UI_KEYCODE_F10 = XK_F10;
+const int UI_KEYCODE_F11 = XK_F11;
+const int UI_KEYCODE_F12 = XK_F12;
+const int UI_KEYCODE_F2 = XK_F2;
+const int UI_KEYCODE_F3 = XK_F3;
+const int UI_KEYCODE_F4 = XK_F4;
+const int UI_KEYCODE_F5 = XK_F5;
+const int UI_KEYCODE_F6 = XK_F6;
+const int UI_KEYCODE_F7 = XK_F7;
+const int UI_KEYCODE_F8 = XK_F8;
+const int UI_KEYCODE_F9 = XK_F9;
+const int UI_KEYCODE_HOME = XK_Home;
+const int UI_KEYCODE_LEFT = XK_Left;
+const int UI_KEYCODE_RIGHT = XK_Right;
+const int UI_KEYCODE_SPACE = XK_space;
+const int UI_KEYCODE_TAB = XK_Tab;
+const int UI_KEYCODE_UP = XK_Up;
 
 int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_LAYOUT && element->children) {
@@ -3431,6 +3448,32 @@ void UIWindowPostMessage(UIWindow *window, UIMessage message, void *_dp) {
 #endif
 
 #ifdef UI_WINDOWS
+
+const int UI_KEYCODE_A = 'A';
+const int UI_KEYCODE_BACKSPACE = VK_BACK;
+const int UI_KEYCODE_DELETE = VK_DELETE;
+const int UI_KEYCODE_DOWN = VK_DOWN;
+const int UI_KEYCODE_END = VK_END;
+const int UI_KEYCODE_ENTER = VK_RETURN;
+const int UI_KEYCODE_ESCAPE = VK_ESCAPE;
+const int UI_KEYCODE_F1 = VK_F1;
+const int UI_KEYCODE_F10 = VK_F10;
+const int UI_KEYCODE_F11 = VK_F11;
+const int UI_KEYCODE_F12 = VK_F12;
+const int UI_KEYCODE_F2 = VK_F2;
+const int UI_KEYCODE_F3 = VK_F3;
+const int UI_KEYCODE_F4 = VK_F4;
+const int UI_KEYCODE_F5 = VK_F5;
+const int UI_KEYCODE_F6 = VK_F6;
+const int UI_KEYCODE_F7 = VK_F7;
+const int UI_KEYCODE_F8 = VK_F8;
+const int UI_KEYCODE_F9 = VK_F9;
+const int UI_KEYCODE_HOME = VK_HOME;
+const int UI_KEYCODE_LEFT = VK_LEFT;
+const int UI_KEYCODE_RIGHT = VK_RIGHT;
+const int UI_KEYCODE_SPACE = VK_SPACE;
+const int UI_KEYCODE_TAB = VK_TAB;
+const int UI_KEYCODE_UP = VK_UP;
 
 int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_LAYOUT && element->children) {
