@@ -5,7 +5,6 @@
 // TODO UIButton, UITextbox, UISlider - disabled state
 // TODO Keyboard navigation:
 // 	- menus
-// 	- tabbing
 // 	- dialogs
 // TODO UITextbox features:
 // 	- mouse input
@@ -132,12 +131,16 @@ typedef struct UITheme {
 #define UI_SIZE_PANE_SMALL_BORDER (3)
 #define UI_SIZE_PANE_SMALL_GAP (3)
 
+#define UI_UPDATE_HOVERED (1)
+#define UI_UPDATE_PRESSED (2)
+#define UI_UPDATE_FOCUSED (3)
+
 typedef enum UIMessage {
 	UI_MSG_PAINT, // dp = pointer to UIPainter
 	UI_MSG_LAYOUT,
 	UI_MSG_DESTROY,
 
-	UI_MSG_UPDATE, // sent when hovered/pressed/focused state changes
+	UI_MSG_UPDATE, // di = UI_UPDATE_... constant
 	UI_MSG_CLICKED,
 	UI_MSG_ANIMATE,
 	UI_MSG_SCROLLED,
@@ -238,11 +241,12 @@ typedef struct UIElement {
 #define UI_ELEMENT_H_FILL (1 << 17)
 #define UI_ELEMENT_WINDOW (1 << 18)
 #define UI_ELEMENT_PARENT_PUSH (1 << 19)
+#define UI_ELEMENT_TAB_STOP (1 << 20)
 
-#define UI_ELEMENT_REPAINT (1 << 20)
-#define UI_ELEMENT_HIDE (1 << 21)
-#define UI_ELEMENT_DESTROY (1 << 22)
-#define UI_ELEMENT_DESTROY_DESCENDENT (1 << 23)
+#define UI_ELEMENT_REPAINT (1 << 28)
+#define UI_ELEMENT_HIDE (1 << 29)
+#define UI_ELEMENT_DESTROY (1 << 30)
+#define UI_ELEMENT_DESTROY_DESCENDENT (1 << 31)
 
 	uint32_t flags; // First 16 bits are element specific.
 
@@ -1364,7 +1368,7 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 }
 
 UIButton *UIButtonCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes) {
-	UIButton *button = (UIButton *) UIElementCreate(sizeof(UIButton), parent, flags, _UIButtonMessage, "Button");
+	UIButton *button = (UIButton *) UIElementCreate(sizeof(UIButton), parent, flags | UI_ELEMENT_TAB_STOP, _UIButtonMessage, "Button");
 	button->label = _UIStringCopy(label, (button->labelBytes = labelBytes));
 	return button;
 }
@@ -2379,7 +2383,6 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			if (!element->window->shift) {
 				textbox->carets[1] = textbox->carets[0];
 			}
-
 		} else if (m->code == UI_KEYCODE_HOME || m->code == UI_KEYCODE_END) {
 			if (m->code == UI_KEYCODE_HOME) {
 				textbox->carets[0] = 0;
@@ -2390,7 +2393,6 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			if (!element->window->shift) {
 				textbox->carets[1] = textbox->carets[0];
 			}
-
 		} else if (m->code == UI_KEYCODE_LETTER('A') && element->window->ctrl) {
 			textbox->carets[1] = 0;
 			textbox->carets[0] = textbox->bytes;
@@ -2410,7 +2412,7 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 }
 
 UITextbox *UITextboxCreate(UIElement *parent, uint32_t flags) {
-	return (UITextbox *) UIElementCreate(sizeof(UITextbox), parent, flags, _UITextboxMessage, "Textbox");
+	return (UITextbox *) UIElementCreate(sizeof(UITextbox), parent, flags | UI_ELEMENT_TAB_STOP, _UITextboxMessage, "Textbox");
 }
 
 int _UIColorCircleMessage(UIElement *element, UIMessage message, int di, void *dp) {
@@ -2537,7 +2539,7 @@ UIColorPicker *UIColorPickerCreate(UIElement *parent, uint32_t flags) {
 	return colorPicker;
 }
 
-bool _UICloseMenus() {
+bool _UIMenusClose() {
 	UIWindow *window = ui.windows;
 	bool anyClosed = false;
 
@@ -2555,7 +2557,7 @@ bool _UICloseMenus() {
 
 int _UIMenuItemMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_CLICKED) {
-		_UICloseMenus();
+		_UIMenusClose();
 	}
 
 	return 0;
@@ -2599,7 +2601,7 @@ int _UIMenuMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIKeyTyped *m = (UIKeyTyped *) dp;
 
 		if (m->code == UI_KEYCODE_ESCAPE) {
-			_UICloseMenus();
+			_UIMenusClose();
 			return 1;
 		}
 	}
@@ -2728,16 +2730,16 @@ void UIElementFocus(UIElement *element) {
 	UIElement *previous = element->window->focused;
 	if (previous == element) return;
 	element->window->focused = element;
-	if (previous) UIElementMessage(previous, UI_MSG_UPDATE, 0, 0);
-	if (element) UIElementMessage(element, UI_MSG_UPDATE, 0, 0);
+	if (previous) UIElementMessage(previous, UI_MSG_UPDATE, UI_UPDATE_FOCUSED, 0);
+	if (element) UIElementMessage(element, UI_MSG_UPDATE, UI_UPDATE_FOCUSED, 0);
 }
 
 void _UIWindowSetPressed(UIWindow *window, UIElement *element, int button) {
 	UIElement *previous = window->pressed;
 	window->pressed = element;
 	window->pressedButton = button;
-	if (previous) UIElementMessage(previous, UI_MSG_UPDATE, 0, 0);
-	if (element) UIElementMessage(element, UI_MSG_UPDATE, 0, 0);
+	if (previous) UIElementMessage(previous, UI_MSG_UPDATE, UI_UPDATE_PRESSED, 0);
+	if (element) UIElementMessage(element, UI_MSG_UPDATE, UI_UPDATE_PRESSED, 0);
 }
 
 bool _UIDestroy(UIElement *element) {
@@ -2858,6 +2860,39 @@ void _UIWindowDestroyCommon(UIWindow *window) {
 	UI_FREE(window->shortcuts);
 }
 
+UIElement *_UIElementLastChild(UIElement *element) {
+	if (!element->children) {
+		return NULL;
+	}
+
+	UIElement *child = element->children;
+
+	while (child->next) {
+		child = child->next;
+	}
+
+	return child;
+}
+
+UIElement *_UIElementPreviousSibling(UIElement *element) {
+	if (!element->parent) {
+		return NULL;
+	}
+
+	UIElement *sibling = element->parent->children;
+
+	if (sibling == element) {
+		return NULL;
+	}
+
+	while (sibling->next != element) {
+		sibling = sibling->next;
+		UI_ASSERT(sibling);
+	}
+	
+	return sibling;
+}
+
 void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) {
 	if (window->pressed) {
 		if (message == UI_MSG_MOUSE_MOVE) {
@@ -2883,10 +2918,10 @@ void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) 
 
 		if (inside && window->hovered == &window->e) {
 			window->hovered = window->pressed;
-			UIElementMessage(window->pressed, UI_MSG_UPDATE, 0, 0);
+			UIElementMessage(window->pressed, UI_MSG_UPDATE, UI_UPDATE_HOVERED, 0);
 		} else if (!inside && window->hovered == window->pressed) {
 			window->hovered = &window->e;
-			UIElementMessage(window->pressed, UI_MSG_UPDATE, 0, 0);
+			UIElementMessage(window->pressed, UI_MSG_UPDATE, UI_UPDATE_HOVERED, 0);
 		}
 	}
 
@@ -2903,17 +2938,17 @@ void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) 
 				_UIWindowSetCursor(window, cursor);
 			}
 		} else if (message == UI_MSG_LEFT_DOWN) {
-			if ((window->e.flags & UI_WINDOW_MENU) || !_UICloseMenus()) {
+			if ((window->e.flags & UI_WINDOW_MENU) || !_UIMenusClose()) {
 				_UIWindowSetPressed(window, hovered, 1);
 				UIElementMessage(hovered, UI_MSG_LEFT_DOWN, di, dp);
 			}
 		} else if (message == UI_MSG_MIDDLE_DOWN) {
-			if ((window->e.flags & UI_WINDOW_MENU) || !_UICloseMenus()) {
+			if ((window->e.flags & UI_WINDOW_MENU) || !_UIMenusClose()) {
 				_UIWindowSetPressed(window, hovered, 2);
 				UIElementMessage(hovered, UI_MSG_MIDDLE_DOWN, di, dp);
 			}
 		} else if (message == UI_MSG_RIGHT_DOWN) {
-			if ((window->e.flags & UI_WINDOW_MENU) || !_UICloseMenus()) {
+			if ((window->e.flags & UI_WINDOW_MENU) || !_UIMenusClose()) {
 				_UIWindowSetPressed(window, hovered, 3);
 				UIElementMessage(hovered, UI_MSG_RIGHT_DOWN, di, dp);
 			}
@@ -2950,13 +2985,42 @@ void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) 
 			if (!handled && !_UIMenusOpen()) {
 				UIKeyTyped *m = (UIKeyTyped *) dp;
 
-				for (uintptr_t i = 0; i < window->shortcutCount; i++) {
-					UIShortcut *shortcut = window->shortcuts + i;
+				if (m->code == UI_KEYCODE_TAB && !window->ctrl && !window->alt) {
+					UIElement *start = window->focused ? window->focused : &window->e;
+					UIElement *element = start;
 
-					if (shortcut->code == m->code && shortcut->ctrl == window->ctrl 
-							&& shortcut->shift == window->shift && shortcut->alt == window->alt) {
-						shortcut->invoke(shortcut->cp);
-						break;
+					do {
+						if (element->children) {
+							element = window->shift ? _UIElementLastChild(element) : element->children;
+							continue;
+						} 
+
+						while (element) {
+							if (window->shift ? (element->parent && element->parent->children != element) : !!element->next) {
+								element = window->shift ? _UIElementPreviousSibling(element) : element->next;
+								break;
+							} else {
+								element = element->parent;
+							}
+						}
+
+						if (!element) {
+							element = &window->e;
+						}
+					} while (element != start && ((~element->flags & UI_ELEMENT_TAB_STOP) || (element->flags & UI_ELEMENT_HIDE)));
+
+					if (~element->flags & UI_ELEMENT_WINDOW) {
+						UIElementFocus(element);
+					}
+				} else {
+					for (uintptr_t i = 0; i < window->shortcutCount; i++) {
+						UIShortcut *shortcut = window->shortcuts + i;
+
+						if (shortcut->code == m->code && shortcut->ctrl == window->ctrl 
+								&& shortcut->shift == window->shift && shortcut->alt == window->alt) {
+							shortcut->invoke(shortcut->cp);
+							break;
+						}
 					}
 				}
 			}
@@ -2965,8 +3029,8 @@ void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) 
 		if (hovered != window->hovered) {
 			UIElement *previous = window->hovered;
 			window->hovered = hovered;
-			UIElementMessage(previous, UI_MSG_UPDATE, 0, 0);
-			UIElementMessage(window->hovered, UI_MSG_UPDATE, 0, 0);
+			UIElementMessage(previous, UI_MSG_UPDATE, UI_UPDATE_HOVERED, 0);
+			UIElementMessage(window->hovered, UI_MSG_UPDATE, UI_UPDATE_HOVERED, 0);
 		}
 	}
 
@@ -3146,7 +3210,7 @@ int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 }
 
 UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int _width, int _height) {
-	_UICloseMenus();
+	_UIMenusClose();
 
 	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags | UI_ELEMENT_WINDOW, _UIWindowMessage, "Window");
 	window->scale = 1.0f;
@@ -3581,7 +3645,7 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		SetCursor(ui.cursors[window->cursorStyle]);
 		return 1;
 	} else if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
-		_UICloseMenus();
+		_UIMenusClose();
 
 		if (message == WM_SETFOCUS) {
 			_UIInspectorSetFocusedWindow(window);
@@ -3649,7 +3713,7 @@ void UIMenuShow(UIMenu *menu) {
 }
 
 UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int width, int height) {
-	_UICloseMenus();
+	_UIMenusClose();
 
 	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags | UI_ELEMENT_WINDOW, _UIWindowMessage, "Window");
 	window->scale = 1.0f;
