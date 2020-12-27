@@ -6,6 +6,7 @@
 // TODO Keyboard navigation:
 // 	- menus
 // 	- dialogs
+// 	- tables
 // TODO UITextbox features:
 // 	- mouse input
 // 	- multi-line 
@@ -13,8 +14,6 @@
 // 	- undo/redo
 // 	- IME support
 // TODO Elements:
-// 	- check box 
-// 	- radio box
 // 	- list view
 // 	- dialogs
 // 	- menu bar
@@ -50,8 +49,6 @@
 #ifdef UI_WINDOWS
 #include <windows.h>
 
-#include <stdlib.h>
-
 #define _UI_TO_STRING_1(x) #x
 #define _UI_TO_STRING_2(x) _UI_TO_STRING_1(x)
 #define UI_ASSERT(x) do { if (!(x)) { MessageBox(0, "Assertion failure on line " _UI_TO_STRING_2(__LINE__), 0, 0); ExitProcess(1); } } while (0)
@@ -67,8 +64,6 @@
 #ifdef UI_DEBUG
 #include <stdio.h>
 #endif
-
-#define UI_KEYCODE_LETTER(x) (UI_KEYCODE_A + (x) - 'A')
 
 typedef struct UITheme {
 	union {
@@ -92,6 +87,7 @@ typedef struct UITheme {
 #define UI_SIZE_BUTTON_MINIMUM_WIDTH (100)
 #define UI_SIZE_BUTTON_PADDING (16)
 #define UI_SIZE_BUTTON_HEIGHT (27)
+#define UI_SIZE_BUTTON_CHECKED_AREA (4)
 
 #define UI_SIZE_MENU_ITEM_HEIGHT (24)
 #define UI_SIZE_MENU_ITEM_MINIMUM_WIDTH (160)
@@ -227,6 +223,34 @@ typedef struct UIRectangle {
 #define UI_ALIGN_RIGHT (2)
 #define UI_ALIGN_CENTER (3)
 
+extern const int UI_KEYCODE_A;
+extern const int UI_KEYCODE_BACKSPACE;
+extern const int UI_KEYCODE_DELETE;
+extern const int UI_KEYCODE_DOWN;
+extern const int UI_KEYCODE_END;
+extern const int UI_KEYCODE_ENTER;
+extern const int UI_KEYCODE_ESCAPE;
+extern const int UI_KEYCODE_F1;
+extern const int UI_KEYCODE_F10;
+extern const int UI_KEYCODE_F11;
+extern const int UI_KEYCODE_F12;
+extern const int UI_KEYCODE_F2;
+extern const int UI_KEYCODE_F3;
+extern const int UI_KEYCODE_F4;
+extern const int UI_KEYCODE_F5;
+extern const int UI_KEYCODE_F6;
+extern const int UI_KEYCODE_F7;
+extern const int UI_KEYCODE_F8;
+extern const int UI_KEYCODE_F9;
+extern const int UI_KEYCODE_HOME;
+extern const int UI_KEYCODE_LEFT;
+extern const int UI_KEYCODE_RIGHT;
+extern const int UI_KEYCODE_SPACE;
+extern const int UI_KEYCODE_TAB;
+extern const int UI_KEYCODE_UP;
+
+#define UI_KEYCODE_LETTER(x) (UI_KEYCODE_A + (x) - 'A')
+
 typedef struct UIPainter {
 	UIRectangle clip;
 	uint32_t *bits;
@@ -335,6 +359,7 @@ typedef struct UIButton {
 #define UI_BUTTON_SMALL (1 << 0)
 #define UI_BUTTON_MENU_ITEM (1 << 1)
 #define UI_BUTTON_CAN_FOCUS (1 << 2)
+#define UI_BUTTON_CHECKED (1 << 15)
 	UIElement e;
 	char *label;
 	ptrdiff_t labelBytes;
@@ -501,32 +526,6 @@ bool UIRectangleContains(UIRectangle a, int x, int y);
 
 bool UIColorToHSV(uint32_t rgb, float *hue, float *saturation, float *value);
 void UIColorToRGB(float hue, float saturation, float value, uint32_t *rgb);
-
-extern const int UI_KEYCODE_A;
-extern const int UI_KEYCODE_BACKSPACE;
-extern const int UI_KEYCODE_DELETE;
-extern const int UI_KEYCODE_DOWN;
-extern const int UI_KEYCODE_END;
-extern const int UI_KEYCODE_ENTER;
-extern const int UI_KEYCODE_ESCAPE;
-extern const int UI_KEYCODE_F1;
-extern const int UI_KEYCODE_F10;
-extern const int UI_KEYCODE_F11;
-extern const int UI_KEYCODE_F12;
-extern const int UI_KEYCODE_F2;
-extern const int UI_KEYCODE_F3;
-extern const int UI_KEYCODE_F4;
-extern const int UI_KEYCODE_F5;
-extern const int UI_KEYCODE_F6;
-extern const int UI_KEYCODE_F7;
-extern const int UI_KEYCODE_F8;
-extern const int UI_KEYCODE_F9;
-extern const int UI_KEYCODE_HOME;
-extern const int UI_KEYCODE_LEFT;
-extern const int UI_KEYCODE_RIGHT;
-extern const int UI_KEYCODE_SPACE;
-extern const int UI_KEYCODE_TAB;
-extern const int UI_KEYCODE_UP;
 
 #ifdef UI_IMPLEMENTATION
 
@@ -1062,9 +1061,10 @@ void UIDrawRectangle(UIPainter *painter, UIRectangle r, uint32_t mainColor, uint
 }
 
 void UIElementMove(UIElement *element, UIRectangle bounds, bool alwaysLayout) {
+	UIRectangle oldClip = element->clip;
 	element->clip = UIRectangleIntersection(element->parent->clip, bounds);
 
-	if (!UIRectangleEquals(element->bounds, bounds) || alwaysLayout) {
+	if (!UIRectangleEquals(element->bounds, bounds) || !UIRectangleEquals(element->clip, oldClip) || alwaysLayout) {
 		element->bounds = bounds;
 		UIElementMessage(element, UI_MSG_LAYOUT, 0, 0);
 	}
@@ -1326,8 +1326,14 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			: focused ? ui.theme.buttonFocused : ui.theme.buttonNormal;
 		UIDrawRectangle(painter, element->bounds, color, ui.theme.border, UI_RECT_1(isMenuItem ? 0 : 1));
 
+		if (element->flags & UI_BUTTON_CHECKED) {
+			UIDrawBlock(painter, UIRectangleAdd(element->bounds, 
+				UI_RECT_1I((int) (UI_SIZE_BUTTON_CHECKED_AREA * element->window->scale))), ui.theme.buttonPressed);
+		}
+
 		if (isMenuItem) {
-			UIRectangle bounds = UIRectangleAdd(element->bounds, UI_RECT_2I((int) (UI_SIZE_MENU_ITEM_MARGIN * element->window->scale), 0));
+			UIRectangle bounds = UIRectangleAdd(element->bounds, 
+				UI_RECT_2I((int) (UI_SIZE_MENU_ITEM_MARGIN * element->window->scale), 0));
 
 			if (button->labelBytes == -1) {
 				button->labelBytes = _UIStringLength(button->label);
@@ -1357,6 +1363,7 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		
 		if (m->code == UI_KEYCODE_SPACE) {
 			UIElementMessage(element, UI_MSG_CLICKED, 0, 0);
+			UIElementRepaint(element, NULL);
 		}
 	} else if (message == UI_MSG_CLICKED) {
 		if (button->invoke) {
@@ -2287,7 +2294,9 @@ void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, boo
 	textbox->carets[0] += bytes;
 	textbox->carets[1] = textbox->carets[0];
 
-	UIElementMessage(&textbox->e, UI_MSG_VALUE_CHANGED, 0, 0);
+	if (sendChangedMessage) {
+		UIElementMessage(&textbox->e, UI_MSG_VALUE_CHANGED, 0, 0);
+	}
 }
 
 void UITextboxClear(UITextbox *textbox, bool sendChangedMessage) {
@@ -2495,7 +2504,10 @@ int _UIColorValueSliderMessage(UIElement *element, UIMessage message, int di, vo
 			UIColorToRGB(colorPicker->hue, colorPicker->saturation, 1.0f - (float) (i - startY) / size, &color);
 
 			do {
-				*out = color;
+				if (UIRectangleContains(element->clip, j, i)) {
+					*out = color;
+				}
+
 				out++, j++;
 			} while (j < element->clip.r);
 		}
@@ -3580,7 +3592,10 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	} else if (message == WM_MOUSEMOVE) {
 		if (!window->trackingLeave) {
 			window->trackingLeave = true;
-			TRACKMOUSEEVENT leave = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd };
+			TRACKMOUSEEVENT leave = { 0 };
+			leave.cbSize = sizeof(TRACKMOUSEEVENT);
+			leave.dwFlags = TME_LEAVE;
+			leave.hwndTrack = hwnd;
 			TrackMouseEvent(&leave);
 		}
 
