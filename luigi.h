@@ -1,7 +1,7 @@
-// TODO Scaling; include a larger font?
+// TODO Generating and using font atlases.
 // TODO Better math functions.
 // TODO UIScrollBar - horizontal.
-// TODO UIPanel - scrolling; more alignment options.
+// TODO UIPanel - more alignment options.
 // TODO UIButton, UITextbox, UISlider - disabled state
 // TODO Keyboard navigation:
 // 	- menus
@@ -110,7 +110,7 @@ typedef struct UITheme {
 
 #define UI_SIZE_SPLITTER (8)
 
-#define UI_SIZE_SCROLL_BAR (20)
+#define UI_SIZE_SCROLL_BAR (16)
 #define UI_SIZE_SCROLL_MINIMUM_THUMB (20)
 
 #define UI_SIZE_GLYPH_WIDTH (9)
@@ -266,6 +266,7 @@ typedef struct UIElement {
 #define UI_ELEMENT_WINDOW (1 << 18)
 #define UI_ELEMENT_PARENT_PUSH (1 << 19)
 #define UI_ELEMENT_TAB_STOP (1 << 20)
+#define UI_ELEMENT_NON_CLIENT (1 << 21) // Don't destroy in UIElementDestroyDescendents, like scroll bars.
 
 #define UI_ELEMENT_REPAINT (1 << 28)
 #define UI_ELEMENT_HIDE (1 << 29)
@@ -283,7 +284,7 @@ typedef struct UIElement {
 	
 	void *cp; // Context pointer (for user).
 
-	int (*messageClass)(struct UIElement *element, UIMessage message, int di, void *dp);
+	int (*messageClass)(struct UIElement *element, UIMessage message, int di /* data integer */, void *dp /* data pointer */);
 	int (*messageUser)(struct UIElement *element, UIMessage message, int di, void *dp);
 
 #ifdef UI_DEBUG
@@ -350,7 +351,9 @@ typedef struct UIPanel {
 #define UI_PANEL_EXPAND (1 << 4)
 #define UI_PANEL_MEDIUM_SPACING (1 << 5)
 #define UI_PANEL_SMALL_SPACING (1 << 6)
+#define UI_PANEL_SCROLL (1 << 7)
 	UIElement e;
+	struct UIScrollBar *scrollBar;
 	UIRectangle border;
 	int gap;
 } UIPanel;
@@ -865,17 +868,24 @@ void UIElementRepaint(UIElement *element, UIRectangle *region) {
 	}
 }
 
-void UIElementDestroyDescendents(UIElement *element) {
+void _UIElementDestroyDescendents(UIElement *element, bool topLevel) {
 	UIElement *child = element->children;
 
 	while (child) {
-		UIElementDestroy(child);
+		if (!topLevel || (~child->flags & UI_ELEMENT_NON_CLIENT)) {
+			UIElementDestroy(child);
+		}
+
 		child = child->next;
 	}
 
 #ifdef UI_DEBUG
 	_UIInspectorRefresh();
 #endif
+}
+
+void UIElementDestroyDescendents(UIElement *element) {
+	_UIElementDestroyDescendents(element, true);
 }
 
 void UIElementDestroy(UIElement *element) {
@@ -892,7 +902,7 @@ void UIElementDestroy(UIElement *element) {
 		ancestor = ancestor->parent;
 	}
 
-	UIElementDestroyDescendents(element);
+	_UIElementDestroyDescendents(element, false);
 }
 
 void UIDrawBlock(UIPainter *painter, UIRectangle rectangle, uint32_t color) {
@@ -1186,34 +1196,33 @@ int _UIPanelLayout(UIPanel *panel, UIRectangle bounds, bool measure) {
 	bool horizontal = panel->e.flags & UI_PANEL_HORIZONTAL;
 	float scale = panel->e.window->scale;
 	int position = (horizontal ? panel->border.l : panel->border.t) * scale;
+	if (panel->scrollBar && !measure) position -= panel->scrollBar->position;
 	int hSpace = UI_RECT_WIDTH(bounds) - UI_RECT_TOTAL_H(panel->border) * scale;
 	int vSpace = UI_RECT_HEIGHT(bounds) - UI_RECT_TOTAL_V(panel->border) * scale;
 
 	int available = horizontal ? hSpace : vSpace;
 	int fill = 0, count = 0, perFill = 0;
 
-	UIElement *child = panel->e.children;
-
-	while (child) {
-		if (~child->flags & UI_ELEMENT_HIDE) {
-			count++;
-
-			if (horizontal) {
-				if (child->flags & UI_ELEMENT_H_FILL) {
-					fill++;
-				} else {
-					available -= UIElementMessage(child, UI_MSG_GET_WIDTH, vSpace, 0);
-				}
-			} else {
-				if (child->flags & UI_ELEMENT_V_FILL) {
-					fill++;
-				} else {
-					available -= UIElementMessage(child, UI_MSG_GET_HEIGHT, hSpace, 0);
-				}
-			}
+	for (UIElement *child = panel->e.children; child; child = child->next) {
+		if (child->flags & (UI_ELEMENT_HIDE | UI_ELEMENT_NON_CLIENT)) {
+			continue;
 		}
 
-		child = child->next;
+		count++;
+
+		if (horizontal) {
+			if (child->flags & UI_ELEMENT_H_FILL) {
+				fill++;
+			} else {
+				available -= UIElementMessage(child, UI_MSG_GET_WIDTH, vSpace, 0);
+			}
+		} else {
+			if (child->flags & UI_ELEMENT_V_FILL) {
+				fill++;
+			} else {
+				available -= UIElementMessage(child, UI_MSG_GET_HEIGHT, hSpace, 0);
+			}
+		}
 	}
 
 	if (count) {
@@ -1224,32 +1233,30 @@ int _UIPanelLayout(UIPanel *panel, UIRectangle bounds, bool measure) {
 		perFill = available / fill;
 	}
 
-	child = panel->e.children;
-
 	bool expand = panel->e.flags & UI_PANEL_EXPAND;
 	int scaledBorder2 = (horizontal ? panel->border.t : panel->border.l) * panel->e.window->scale;
 
-	while (child) {
-		if (~child->flags & UI_ELEMENT_HIDE) {
-			if (horizontal) {
-				int height = ((child->flags & UI_ELEMENT_V_FILL) || expand) ? vSpace : UIElementMessage(child, UI_MSG_GET_HEIGHT, 0, 0);
-				int width = (child->flags & UI_ELEMENT_H_FILL) ? perFill : UIElementMessage(child, UI_MSG_GET_WIDTH, height, 0);
-				UIRectangle relative = UI_RECT_4(position, position + width, 
-						scaledBorder2 + (vSpace - height) / 2, 
-						scaledBorder2 + (vSpace + height) / 2);
-				if (!measure) UIElementMove(child, UIRectangleTranslate(relative, bounds), false);
-				position += width + panel->gap * scale;
-			} else {
-				int width = ((child->flags & UI_ELEMENT_H_FILL) || expand) ? hSpace : UIElementMessage(child, UI_MSG_GET_WIDTH, 0, 0);
-				int height = (child->flags & UI_ELEMENT_V_FILL) ? perFill : UIElementMessage(child, UI_MSG_GET_HEIGHT, width, 0);
-				UIRectangle relative = UI_RECT_4(scaledBorder2 + (hSpace - width) / 2, 
-						scaledBorder2 + (hSpace + width) / 2, position, position + height);
-				if (!measure) UIElementMove(child, UIRectangleTranslate(relative, bounds), false);
-				position += height + panel->gap * scale;
-			}
+	for (UIElement *child = panel->e.children; child; child = child->next) {
+		if (child->flags & (UI_ELEMENT_HIDE | UI_ELEMENT_NON_CLIENT)) {
+			continue;
 		}
 
-		child = child->next;
+		if (horizontal) {
+			int height = ((child->flags & UI_ELEMENT_V_FILL) || expand) ? vSpace : UIElementMessage(child, UI_MSG_GET_HEIGHT, 0, 0);
+			int width = (child->flags & UI_ELEMENT_H_FILL) ? perFill : UIElementMessage(child, UI_MSG_GET_WIDTH, height, 0);
+			UIRectangle relative = UI_RECT_4(position, position + width, 
+					scaledBorder2 + (vSpace - height) / 2, 
+					scaledBorder2 + (vSpace + height) / 2);
+			if (!measure) UIElementMove(child, UIRectangleTranslate(relative, bounds), false);
+			position += width + panel->gap * scale;
+		} else {
+			int width = ((child->flags & UI_ELEMENT_H_FILL) || expand) ? hSpace : UIElementMessage(child, UI_MSG_GET_WIDTH, 0, 0);
+			int height = (child->flags & UI_ELEMENT_V_FILL) ? perFill : UIElementMessage(child, UI_MSG_GET_HEIGHT, width, 0);
+			UIRectangle relative = UI_RECT_4(scaledBorder2 + (hSpace - width) / 2, 
+					scaledBorder2 + (hSpace + width) / 2, position, position + height);
+			if (!measure) UIElementMove(child, UIRectangleTranslate(relative, bounds), false);
+			position += height + panel->gap * scale;
+		}
 	}
 
 	return position - panel->gap * scale + (horizontal ? panel->border.r : panel->border.b) * scale;
@@ -1260,7 +1267,19 @@ int _UIPanelMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	bool horizontal = panel->e.flags & UI_PANEL_HORIZONTAL;
 
 	if (message == UI_MSG_LAYOUT) {
-		_UIPanelLayout(panel, element->bounds, false);
+		int scrollBarWidth = panel->scrollBar ? (UI_SIZE_SCROLL_BAR * element->window->scale) : 0;
+		UIRectangle bounds = element->bounds;
+		bounds.r -= scrollBarWidth;
+
+		if (panel->scrollBar) {
+			UIRectangle scrollBarBounds = element->bounds;
+			scrollBarBounds.l = scrollBarBounds.r - scrollBarWidth;
+			panel->scrollBar->maximum = _UIPanelLayout(panel, bounds, true);
+			panel->scrollBar->page = UI_RECT_HEIGHT(element->bounds);
+			UIElementMove(&panel->scrollBar->e, scrollBarBounds, true);
+		}
+
+		_UIPanelLayout(panel, bounds, false);
 	} else if (message == UI_MSG_GET_WIDTH && horizontal) {
 		if (horizontal) {
 			return _UIPanelLayout(panel, UI_RECT_4(0, 0, 0, di), true);
@@ -1271,7 +1290,8 @@ int _UIPanelMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		if (horizontal) {
 			return _UIPanelMeasure(panel);
 		} else {
-			return _UIPanelLayout(panel, UI_RECT_4(0, di, 0, 0), true);
+			int width = di && panel->scrollBar ? (di - UI_SIZE_SCROLL_BAR * element->window->scale) : di;
+			return _UIPanelLayout(panel, UI_RECT_4(0, width, 0, 0), true);
 		}
 	} else if (message == UI_MSG_PAINT) {
 		if (element->flags & UI_PANEL_GRAY) {
@@ -1279,6 +1299,10 @@ int _UIPanelMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		} else if (element->flags & UI_PANEL_WHITE) {
 			UIDrawBlock((UIPainter *) dp, element->bounds, ui.theme.panel2);
 		}
+	} else if (message == UI_MSG_MOUSE_WHEEL && panel->scrollBar) {
+		return UIElementMessage(&panel->scrollBar->e, message, di, dp);
+	} else if (message == UI_MSG_SCROLLED) {
+		UIElementRefresh(element);
 	}
 
 	return 0;
@@ -1293,6 +1317,10 @@ UIPanel *UIPanelCreate(UIElement *parent, uint32_t flags) {
 	} else if (flags & UI_PANEL_SMALL_SPACING) {
 		panel->border = UI_RECT_1(UI_SIZE_PANE_SMALL_BORDER);
 		panel->gap = UI_SIZE_PANE_SMALL_GAP;
+	}
+
+	if (flags & UI_PANEL_SCROLL) {
+		panel->scrollBar = UIScrollBarCreate(&panel->e, UI_ELEMENT_NON_CLIENT);
 	}
 
 	return panel;
@@ -1681,7 +1709,7 @@ int _UIScrollUpDownMessage(UIElement *element, UIMessage message, int di, void *
 		uint32_t color = element == element->window->pressed ? ui.theme.buttonPressed 
 			: element == element->window->hovered ? ui.theme.buttonHovered : ui.theme.panel2;
 		UIDrawRectangle(painter, element->bounds, color, ui.theme.border, UI_RECT_1(0));
-		UIDrawGlyph(painter, (element->bounds.l + element->bounds.r - UI_SIZE_GLYPH_WIDTH) / 2, 
+		UIDrawGlyph(painter, (element->bounds.l + element->bounds.r - UI_SIZE_GLYPH_WIDTH) / 2 + 1, 
 			isDown ? (element->bounds.b - UI_SIZE_GLYPH_HEIGHT - 2 * element->window->scale) 
 				: (element->bounds.t + 2 * element->window->scale), 
 			isDown ? 25 : 24, ui.theme.scrollGlyph);
