@@ -99,7 +99,7 @@ typedef struct UITheme {
 #define UI_SIZE_SLIDER_WIDTH (200)
 #define UI_SIZE_SLIDER_HEIGHT (25)
 #define UI_SIZE_SLIDER_THUMB (15)
-#define UI_SIZE_SLIDER_TRACK (3)
+#define UI_SIZE_SLIDER_TRACK (5)
 
 #define UI_SIZE_TEXTBOX_MARGIN (3)
 #define UI_SIZE_TEXTBOX_WIDTH (200)
@@ -204,9 +204,14 @@ typedef struct UIRectangle {
 #define UI_RECT_ALL(_r) (_r).l, (_r).r, (_r).t, (_r).b
 #define UI_RECT_VALID(_r) (UI_RECT_WIDTH(_r) > 0 && UI_RECT_HEIGHT(_r) > 0)
 
+#define UI_COLOR_ALPHA_F(x) ((((x) >> 24) & 0xFF) / 255.0f)
 #define UI_COLOR_RED_F(x) ((((x) >> 16) & 0xFF) / 255.0f)
 #define UI_COLOR_GREEN_F(x) ((((x) >> 8) & 0xFF) / 255.0f)
 #define UI_COLOR_BLUE_F(x) ((((x) >> 0) & 0xFF) / 255.0f)
+#define UI_COLOR_ALPHA(x) ((((x) >> 24) & 0xFF))
+#define UI_COLOR_RED(x) ((((x) >> 16) & 0xFF))
+#define UI_COLOR_GREEN(x) ((((x) >> 8) & 0xFF))
+#define UI_COLOR_BLUE(x) ((((x) >> 0) & 0xFF))
 #define UI_COLOR_FROM_FLOAT(r, g, b) (((uint32_t) ((r) * 255.0f) << 16) | ((uint32_t) ((g) * 255.0f) << 8) | ((uint32_t) ((b) * 255.0f) << 0))
 
 #define UI_SWAP(s, a, b) do { s t = (a); (a) = (b); (b) = t; } while (0)
@@ -217,7 +222,8 @@ typedef struct UIRectangle {
 #define UI_CURSOR_SPLIT_H (3)
 #define UI_CURSOR_FLIPPED_ARROW (4)
 #define UI_CURSOR_CROSS_HAIR (5)
-#define UI_CURSOR_COUNT (6)
+#define UI_CURSOR_HAND (6)
+#define UI_CURSOR_COUNT (7)
 
 #define UI_ALIGN_LEFT (1)
 #define UI_ALIGN_RIGHT (2)
@@ -448,11 +454,13 @@ typedef struct UIMenu {
 typedef struct UISlider {
 	UIElement e;
 	float position;
+	int steps;
 } UISlider;
 
 typedef struct UIColorPicker {
+#define UI_COLOR_PICKER_HAS_OPACITY (1 << 0)
 	UIElement e;
-	float hue, saturation, value;
+	float hue, saturation, value, opacity;
 } UIColorPicker;
 
 void UIInitialise();
@@ -2085,6 +2093,7 @@ int _UISliderMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIRectangle bounds = element->bounds;
 		int thumbSize = UI_SIZE_SLIDER_THUMB * element->window->scale;
 		slider->position = (float) (element->window->cursorX - thumbSize / 2 - bounds.l) / (UI_RECT_WIDTH(bounds) - thumbSize);
+		if (slider->steps > 1) slider->position = (int) (slider->position * (slider->steps - 1) + 0.5f) / (float) (slider->steps - 1);
 		if (slider->position < 0) slider->position = 0;
 		if (slider->position > 1) slider->position = 1;
 		UIElementMessage(element, UI_MSG_VALUE_CHANGED, 0, 0);
@@ -2473,7 +2482,7 @@ int _UIColorCircleMessage(UIElement *element, UIMessage message, int di, void *d
 				float hue = (angle + 3.14159f) * 0.954929658f;
 				float saturation = _UISquareRootFloat(distanceFromCenterSquared * 4.0f / size / size);
 
-				if (saturation <= 1 && UIRectangleContains(element->clip, j, i)) {
+				if (saturation <= 1 && UIRectangleContains(painter->clip, j, i)) {
 					UIColorToRGB(hue, saturation, colorPicker->value, out);
 				}
 
@@ -2514,8 +2523,9 @@ int _UIColorCircleMessage(UIElement *element, UIMessage message, int di, void *d
 	return 0;
 }
 
-int _UIColorValueSliderMessage(UIElement *element, UIMessage message, int di, void *dp) {
+int _UIColorSliderMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	UIColorPicker *colorPicker = (UIColorPicker *) element->parent;
+	float opacitySlider = element->flags & 1;
 
 	if (message == UI_MSG_PAINT) {
 		UIPainter *painter = (UIPainter *) dp;
@@ -2525,30 +2535,37 @@ int _UIColorValueSliderMessage(UIElement *element, UIMessage message, int di, vo
 		int size = endY - startY;
 
 		for (int i = startY; i < endY; i++) {
-			if (i < element->clip.t || i > element->clip.b) continue;
+			if (i < painter->clip.t || i >= painter->clip.b) continue;
 			uint32_t *out = painter->bits + i * painter->width + startX;
 			int j = element->clip.l;
 			uint32_t color;
-			UIColorToRGB(colorPicker->hue, colorPicker->saturation, 1.0f - (float) (i - startY) / size, &color);
+			float p = 1.0f - (float) (i - startY) / size;
+
+			if (opacitySlider) {
+				UIColorToRGB(colorPicker->hue, colorPicker->saturation, colorPicker->value, &color);
+				color = UI_COLOR_FROM_FLOAT(p * (UI_COLOR_RED_F(color) - 0.5f) + 0.5f, 
+					p * (UI_COLOR_GREEN_F(color) - 0.5f) + 0.5f, 
+					p * (UI_COLOR_BLUE_F(color) - 0.5f) + 0.5f);
+			} else {
+				UIColorToRGB(colorPicker->hue, colorPicker->saturation, p, &color);
+			}
 
 			do {
-				if (UIRectangleContains(element->clip, j, i)) {
-					*out = color;
-				}
-
+				*out = color;
 				out++, j++;
 			} while (j < element->clip.r);
 		}
 
-		int cy = (size - 1) * (1 - colorPicker->value) + startY;
+		int cy = (size - 1) * (1 - (opacitySlider ? colorPicker->opacity : colorPicker->value)) + startY;
 		UIDrawInvert(painter, UI_RECT_4(startX, endX, cy - 1, cy + 1));
 	} else if (message == UI_MSG_GET_CURSOR) {
 		return UI_CURSOR_CROSS_HAIR;
 	} else if (message == UI_MSG_LEFT_DOWN || message == UI_MSG_MOUSE_DRAG) {
 		int startY = element->bounds.t, endY = element->bounds.b, cursorY = element->window->cursorY;
-		colorPicker->value = 1 - (float) (cursorY - startY) / (endY - startY);
-		if (colorPicker->value < 0) colorPicker->value = 0;
-		if (colorPicker->value > 1) colorPicker->value = 1;
+		float *value = opacitySlider ? &colorPicker->opacity : &colorPicker->value;
+		*value = 1 - (float) (cursorY - startY) / (endY - startY);
+		if (*value < 0) *value = 0;
+		if (*value > 1) *value = 1;
 		UIElementMessage(&colorPicker->e, UI_MSG_VALUE_CHANGED, 0, 0);
 		UIElementRepaint(&colorPicker->e, NULL);
 	}
@@ -2557,16 +2574,26 @@ int _UIColorValueSliderMessage(UIElement *element, UIMessage message, int di, vo
 }
 
 int _UIColorPickerMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	bool hasOpacity = element->flags & UI_COLOR_PICKER_HAS_OPACITY;
+
 	if (message == UI_MSG_GET_WIDTH) {
-		return 200 * element->window->scale;
+		return (hasOpacity ? 240 : 200) * element->window->scale;
 	} else if (message == UI_MSG_GET_HEIGHT) {
 		return 160 * element->window->scale;
 	} else if (message == UI_MSG_LAYOUT) {
 		UIRectangle bounds = element->bounds;
+
 		int sliderSize = 35 * element->window->scale;
 		int gap = 5 * element->window->scale;
-		UIElementMove(element->children, UI_RECT_4(bounds.l, bounds.r - sliderSize - gap, bounds.t, bounds.b), false);
-		UIElementMove(element->children->next, UI_RECT_4(bounds.r - sliderSize, bounds.r, bounds.t, bounds.b), false);
+
+		if (hasOpacity) {
+			UIElementMove(element->children, UI_RECT_4(bounds.l, bounds.r - (sliderSize + gap) * 2, bounds.t, bounds.b), false);
+			UIElementMove(element->children->next, UI_RECT_4(bounds.r - sliderSize * 2 - gap, bounds.r - sliderSize - gap, bounds.t, bounds.b), false);
+			UIElementMove(element->children->next->next, UI_RECT_4(bounds.r - sliderSize, bounds.r, bounds.t, bounds.b), false);
+		} else {
+			UIElementMove(element->children, UI_RECT_4(bounds.l, bounds.r - sliderSize - gap, bounds.t, bounds.b), false);
+			UIElementMove(element->children->next, UI_RECT_4(bounds.r - sliderSize, bounds.r, bounds.t, bounds.b), false);
+		}
 	}
 
 	return 0;
@@ -2575,7 +2602,12 @@ int _UIColorPickerMessage(UIElement *element, UIMessage message, int di, void *d
 UIColorPicker *UIColorPickerCreate(UIElement *parent, uint32_t flags) {
 	UIColorPicker *colorPicker = (UIColorPicker *) UIElementCreate(sizeof(UIColorPicker), parent, flags, _UIColorPickerMessage, "ColorPicker");
 	UIElementCreate(sizeof(UIElement), &colorPicker->e, 0, _UIColorCircleMessage, "ColorCircle");
-	UIElementCreate(sizeof(UIElement), &colorPicker->e, 0, _UIColorValueSliderMessage, "ColorValueSlider");
+	UIElementCreate(sizeof(UIElement), &colorPicker->e, 0, _UIColorSliderMessage, "ColorSlider");
+
+	if (flags & UI_COLOR_PICKER_HAS_OPACITY) {
+		UIElementCreate(sizeof(UIElement), &colorPicker->e, 1, _UIColorSliderMessage, "ColorSlider");
+	}
+
 	return colorPicker;
 }
 
@@ -3296,6 +3328,7 @@ void UIInitialise() {
 	ui.cursors[UI_CURSOR_SPLIT_H] = XCreateFontCursor(ui.display, XC_sb_h_double_arrow);
 	ui.cursors[UI_CURSOR_FLIPPED_ARROW] = XCreateFontCursor(ui.display, XC_right_ptr);
 	ui.cursors[UI_CURSOR_CROSS_HAIR] = XCreateFontCursor(ui.display, XC_crosshair);
+	ui.cursors[UI_CURSOR_HAND] = XCreateFontCursor(ui.display, XC_hand1);
 
 	XSetLocaleModifiers("");
 
@@ -3711,6 +3744,7 @@ void UIInitialise() {
 	ui.cursors[UI_CURSOR_SPLIT_H] = LoadCursor(NULL, IDC_SIZEWE);
 	ui.cursors[UI_CURSOR_FLIPPED_ARROW] = LoadCursor(NULL, IDC_ARROW);
 	ui.cursors[UI_CURSOR_CROSS_HAIR] = LoadCursor(NULL, IDC_CROSS);
+	ui.cursors[UI_CURSOR_HAND] = LoadCursor(NULL, IDC_HAND);
 
 	ui.heap = GetProcessHeap();
 
