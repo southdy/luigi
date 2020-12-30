@@ -2,7 +2,6 @@
 // TODO Better math functions.
 // TODO UIScrollBar - horizontal.
 // TODO UIPanel - more alignment options.
-// TODO UIButton, UITextbox, UISlider - disabled state
 // TODO Keyboard navigation:
 // 	- menus
 // 	- dialogs
@@ -213,6 +212,8 @@ typedef struct UIRectangle {
 #define UI_COLOR_GREEN(x) ((((x) >> 8) & 0xFF))
 #define UI_COLOR_BLUE(x) ((((x) >> 0) & 0xFF))
 #define UI_COLOR_FROM_FLOAT(r, g, b) (((uint32_t) ((r) * 255.0f) << 16) | ((uint32_t) ((g) * 255.0f) << 8) | ((uint32_t) ((b) * 255.0f) << 0))
+#define UI_COLOR_FROM_RGBA_F(r, g, b, a) (((uint32_t) ((r) * 255.0f) << 16) | ((uint32_t) ((g) * 255.0f) << 8) \
+		| ((uint32_t) ((b) * 255.0f) << 0) | ((uint32_t) ((a) * 255.0f) << 24))
 
 #define UI_SWAP(s, a, b) do { s t = (a); (a) = (b); (b) = t; } while (0)
 
@@ -516,6 +517,9 @@ void UIDrawString(UIPainter *painter, UIRectangle r, const char *string, ptrdiff
 int UIMeasureStringWidth(const char *string, ptrdiff_t bytes);
 int UIMeasureStringHeight();
 
+uint64_t UIAnimateClock(); // In ms.
+
+bool UIElementAnimate(UIElement *element, bool stop);
 void UIElementDestroy(UIElement *element);
 void UIElementDestroyDescendents(UIElement *element);
 UIElement *UIElementFindByPoint(UIElement *element, int x, int y);
@@ -879,6 +883,28 @@ void UIElementRepaint(UIElement *element, UIRectangle *region) {
 	if (changed && element->parent) {
 		UIElementRepaint(element->parent, &r);
 	}
+}
+
+bool UIElementAnimate(UIElement *element, bool stop) {
+	if (stop) {
+		if (ui.animating != element) {
+			return false;
+		}
+
+		ui.animating = NULL;
+	} else {
+		if (ui.animating && ui.animating != element) {
+			return false;
+		}
+
+		ui.animating = element;
+	}
+
+	return true;
+}
+
+uint64_t UIAnimateClock() {
+	return (uint64_t) UI_CLOCK() * 1000 / UI_CLOCKS_PER_SECOND;
 }
 
 void _UIElementDestroyDescendents(UIElement *element, bool topLevel) {
@@ -1737,11 +1763,11 @@ int _UIScrollUpDownMessage(UIElement *element, UIMessage message, int di, void *
 			isDown ? 25 : 24, ui.theme.scrollGlyph);
 	} else if (message == UI_MSG_UPDATE) {
 		UIElementRepaint(element, NULL);
-	} else if (message == UI_MSG_LEFT_DOWN && !ui.animating) {
-		ui.animating = element;
+	} else if (message == UI_MSG_LEFT_DOWN) {
+		UIElementAnimate(element, false);
 		scrollBar->lastAnimateTime = UI_CLOCK();
 	} else if (message == UI_MSG_LEFT_UP) {
-		ui.animating = NULL;
+		UIElementAnimate(element, true);
 	} else if (message == UI_MSG_ANIMATE) {
 		UI_CLOCK_T previous = scrollBar->lastAnimateTime;
 		UI_CLOCK_T current = UI_CLOCK();
@@ -2100,7 +2126,8 @@ int _UISliderMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIDrawRectangle(painter, track, ui.theme.buttonNormal, ui.theme.border, UI_RECT_1(1));
 		bool pressed = element == element->window->pressed;
 		bool hovered = element == element->window->hovered;
-		uint32_t color = pressed ? ui.theme.buttonPressed : hovered ? ui.theme.buttonHovered : ui.theme.buttonNormal;
+		bool disabled = element->flags & UI_ELEMENT_DISABLED;
+		uint32_t color = disabled ? ui.theme.buttonDisabled : pressed ? ui.theme.buttonPressed : hovered ? ui.theme.buttonHovered : ui.theme.buttonNormal;
 		UIRectangle thumb = UI_RECT_4(bounds.l + thumbPosition, bounds.l + thumbPosition + thumbSize, centerY - (thumbSize + 1) / 2, centerY + thumbSize / 2);
 		UIDrawRectangle(painter, thumb, color, ui.theme.border, UI_RECT_1(1));
 	} else if (message == UI_MSG_LEFT_DOWN || (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1)) {
@@ -2409,8 +2436,9 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 
 		UIPainter *painter = (UIPainter *) dp;
 		bool focused = element->window->focused == element;
+		bool disabled = element->flags & UI_ELEMENT_DISABLED;
 		UIDrawRectangle(painter, element->bounds, 
-			focused ? ui.theme.textboxFocused : ui.theme.textboxNormal, 
+			disabled ? ui.theme.buttonDisabled : focused ? ui.theme.textboxFocused : ui.theme.textboxNormal, 
 			ui.theme.border, UI_RECT_1(1));
 		UIStringSelection selection = { 0 };
 		selection.carets[0] = textbox->carets[0];
@@ -2418,7 +2446,8 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		selection.colorBackground = ui.theme.textboxSelected;
 		selection.colorText = ui.theme.textboxSelectedText;
 		textBounds.l -= textbox->scroll;
-		UIDrawString(painter, textBounds, textbox->string, textbox->bytes, ui.theme.textboxText, UI_ALIGN_LEFT, focused ? &selection : NULL);
+		UIDrawString(painter, textBounds, textbox->string, textbox->bytes, 
+			disabled ? ui.theme.textDisabled : ui.theme.textboxText, UI_ALIGN_LEFT, focused ? &selection : NULL);
 	} else if (message == UI_MSG_GET_CURSOR) {
 		return UI_CURSOR_TEXT;
 	} else if (message == UI_MSG_LEFT_DOWN) {
