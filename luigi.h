@@ -69,8 +69,8 @@ typedef struct UITheme {
 	union {
 		struct {
 			uint32_t panel1, panel2;
-			uint32_t text, border;
-			uint32_t buttonNormal, buttonHovered, buttonPressed, buttonFocused;
+			uint32_t text, textDisabled, border;
+			uint32_t buttonNormal, buttonHovered, buttonPressed, buttonFocused, buttonDisabled;
 			uint32_t textboxNormal, textboxText, textboxFocused, textboxSelected, textboxSelectedText;
 			uint32_t scrollGlyph, scrollThumbNormal, scrollThumbHovered, scrollThumbPressed;
 			uint32_t codeFocused, codeBackground, codeDefault, codeComment, codeString, codeNumber, codeOperator, codePreprocessor;
@@ -121,6 +121,7 @@ typedef struct UITheme {
 
 #define UI_SIZE_TABLE_HEADER (26)
 #define UI_SIZE_TABLE_COLUMN_GAP (20)
+#define UI_SIZE_TABLE_ROW (20)
 
 #define UI_SIZE_PANE_MEDIUM_BORDER (5)
 #define UI_SIZE_PANE_MEDIUM_GAP (5)
@@ -135,16 +136,13 @@ typedef enum UIMessage {
 	UI_MSG_PAINT, // dp = pointer to UIPainter
 	UI_MSG_LAYOUT,
 	UI_MSG_DESTROY,
-
 	UI_MSG_UPDATE, // di = UI_UPDATE_... constant
-	UI_MSG_CLICKED,
 	UI_MSG_ANIMATE,
 	UI_MSG_SCROLLED,
-
 	UI_MSG_GET_WIDTH, // di = height (if known); return width
 	UI_MSG_GET_HEIGHT, // di = width (if known); return height
-	UI_MSG_GET_CURSOR, // return cursor code
 
+	UI_MSG_INPUT_EVENTS_START, // not sent to disabled elements
 	UI_MSG_LEFT_DOWN,
 	UI_MSG_LEFT_UP,
 	UI_MSG_MIDDLE_DOWN,
@@ -152,10 +150,12 @@ typedef enum UIMessage {
 	UI_MSG_RIGHT_DOWN,
 	UI_MSG_RIGHT_UP,
 	UI_MSG_KEY_TYPED, // dp = pointer to UIKeyTyped; return 1 if handled
-
 	UI_MSG_MOUSE_MOVE,
 	UI_MSG_MOUSE_DRAG,
 	UI_MSG_MOUSE_WHEEL, // di = delta; return 1 if handled
+	UI_MSG_CLICKED,
+	UI_MSG_GET_CURSOR, // return cursor code
+	UI_MSG_INPUT_EVENTS_END,
 
 	UI_MSG_VALUE_CHANGED, // sent to notify that the element's value has changed
 	UI_MSG_TABLE_GET_ITEM, // dp = pointer to UITableGetItem; return string length
@@ -273,6 +273,7 @@ typedef struct UIElement {
 #define UI_ELEMENT_PARENT_PUSH (1 << 19)
 #define UI_ELEMENT_TAB_STOP (1 << 20)
 #define UI_ELEMENT_NON_CLIENT (1 << 21) // Don't destroy in UIElementDestroyDescendents, like scroll bars.
+#define UI_ELEMENT_DISABLED (1 << 22) // Don't receive input events.
 
 #define UI_ELEMENT_REPAINT (1 << 28)
 #define UI_ELEMENT_HIDE (1 << 29)
@@ -574,6 +575,7 @@ UITheme _uiThemeClassic = {
 		.panel2 = 0xFFFFFF,
 
 		.text = 0x000000,
+		.textDisabled = 0x404040,
 
 		.border = 0x404040,
 
@@ -581,6 +583,7 @@ UITheme _uiThemeClassic = {
 		.buttonHovered = 0xF0F0F0,
 		.buttonPressed = 0xA0A0A0,
 		.buttonFocused = 0xD3E4FF,
+		.buttonDisabled = 0xF0F0F0,
 
 		.textboxNormal = 0xF8F8F8,
 		.textboxText = 0x000000,
@@ -617,6 +620,7 @@ UITheme _uiThemeDark = {
 		.panel2 = 0x0B0D11,
 
 		.text = 0xFFFFFF,
+		.textDisabled = 0x787D81,
 
 		.border = 0x000000,
 
@@ -624,6 +628,7 @@ UITheme _uiThemeDark = {
 		.buttonHovered = 0x4B5874,
 		.buttonPressed = 0x0D0D0F,
 		.buttonFocused = 0x6290E0,
+		.buttonDisabled = 0x1B1F23,
 
 		.textboxNormal = 0x31353C,
 		.textboxText = 0xFFFFFF,
@@ -1093,6 +1098,10 @@ int UIElementMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		return 0;
 	}
 
+	if (message >= UI_MSG_INPUT_EVENTS_START && message <= UI_MSG_INPUT_EVENTS_END && (element->flags & UI_ELEMENT_DISABLED)) {
+		return 0;
+	}
+
 	if (element->messageUser) {
 		int result = element->messageUser(element, message, di, dp);
 
@@ -1354,12 +1363,17 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		return paddedSize > minimumSize ? paddedSize : minimumSize;
 	} else if (message == UI_MSG_PAINT) {
 		UIPainter *painter = (UIPainter *) dp;
+
+		bool disabled = element->flags & UI_ELEMENT_DISABLED;
 		bool focused = element == element->window->focused;
 		bool pressed = element == element->window->pressed;
 		bool hovered = element == element->window->hovered;
-		uint32_t color = (pressed && hovered) ? ui.theme.buttonPressed 
+		uint32_t color = disabled ? ui.theme.buttonDisabled
+			: (pressed && hovered) ? ui.theme.buttonPressed 
 			: (pressed || hovered) ? ui.theme.buttonHovered 
 			: focused ? ui.theme.buttonFocused : ui.theme.buttonNormal;
+		uint32_t textColor = disabled ? ui.theme.textDisabled : ui.theme.text;
+
 		UIDrawRectangle(painter, element->bounds, color, ui.theme.border, UI_RECT_1(isMenuItem ? 0 : 1));
 
 		if (element->flags & UI_BUTTON_CHECKED) {
@@ -1378,13 +1392,13 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			int tab = 0;
 			for (; tab < button->labelBytes && button->label[tab] != '\t'; tab++);
 
-			UIDrawString(painter, bounds, button->label, tab, ui.theme.text, UI_ALIGN_LEFT, NULL);
+			UIDrawString(painter, bounds, button->label, tab, textColor, UI_ALIGN_LEFT, NULL);
 
 			if (button->labelBytes > tab) {
-				UIDrawString(painter, bounds, button->label + tab + 1, button->labelBytes - tab - 1, ui.theme.text, UI_ALIGN_RIGHT, NULL);
+				UIDrawString(painter, bounds, button->label + tab + 1, button->labelBytes - tab - 1, textColor, UI_ALIGN_RIGHT, NULL);
 			}
 		} else {
-			UIDrawString(painter, element->bounds, button->label, button->labelBytes, ui.theme.text, UI_ALIGN_CENTER, NULL);
+			UIDrawString(painter, element->bounds, button->label, button->labelBytes, textColor, UI_ALIGN_CENTER, NULL);
 		}
 	} else if (message == UI_MSG_UPDATE) {
 		UIElementRepaint(element, NULL);
@@ -2118,7 +2132,7 @@ int UITableHitTest(UITable *table, int x, int y) {
 
 	y -= (table->e.bounds.t + UI_SIZE_TABLE_HEADER * table->e.window->scale) - table->vScroll->position;
 
-	int rowHeight = UIMeasureStringHeight();
+	int rowHeight = UI_SIZE_TABLE_ROW;
 
 	if (y < 0 || y >= rowHeight * table->itemCount) {
 		return -1;
@@ -2128,7 +2142,7 @@ int UITableHitTest(UITable *table, int x, int y) {
 }
 
 bool UITableEnsureVisible(UITable *table, int index) {
-	int rowHeight = UIMeasureStringHeight();
+	int rowHeight = UI_SIZE_TABLE_ROW;
 	int y = index * rowHeight;
 	y -= table->vScroll->position;
 	int height = UI_RECT_HEIGHT(table->e.bounds) - UI_SIZE_TABLE_HEADER * table->e.window->scale - rowHeight;
@@ -2202,7 +2216,7 @@ int _UITableMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIDrawBlock(painter, bounds, ui.theme.panel2);
 		char buffer[256];
 		UIRectangle row = bounds;
-		int rowHeight = UIMeasureStringHeight();
+		int rowHeight = UI_SIZE_TABLE_ROW;
 		UITableGetItem m = { 0 };
 		m.buffer = buffer;
 		m.bufferBytes = sizeof(buffer);
@@ -2275,7 +2289,7 @@ int _UITableMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	} else if (message == UI_MSG_LAYOUT) {
 		UIRectangle scrollBarBounds = element->bounds;
 		scrollBarBounds.l = scrollBarBounds.r - UI_SIZE_SCROLL_BAR * element->window->scale;
-		table->vScroll->maximum = table->itemCount * UIMeasureStringHeight();
+		table->vScroll->maximum = table->itemCount * UI_SIZE_TABLE_ROW;
 		table->vScroll->page = UI_RECT_HEIGHT(element->bounds) - UI_SIZE_TABLE_HEADER * table->e.window->scale;
 		UIElementMove(&table->vScroll->e, scrollBarBounds, true);
 	} else if (message == UI_MSG_MOUSE_MOVE) {
@@ -2319,7 +2333,7 @@ void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, boo
 
 	textbox->string = (char *) UI_REALLOC(textbox->string, textbox->bytes + bytes);
 
-	for (int i = textbox->carets[0] + bytes; i < textbox->bytes + bytes; i++) {
+	for (int i = textbox->bytes + bytes - 1; i >= textbox->carets[0] + bytes; i--) {
 		textbox->string[i] = textbox->string[i - bytes];
 	}
 
@@ -3079,7 +3093,8 @@ void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) 
 						if (!element) {
 							element = &window->e;
 						}
-					} while (element != start && ((~element->flags & UI_ELEMENT_TAB_STOP) || (element->flags & UI_ELEMENT_HIDE)));
+					} while (element != start && ((~element->flags & UI_ELEMENT_TAB_STOP) 
+						|| (element->flags & (UI_ELEMENT_HIDE | UI_ELEMENT_DISABLED))));
 
 					if (~element->flags & UI_ELEMENT_WINDOW) {
 						UIElementFocus(element);
