@@ -2,7 +2,7 @@
 
 // #define UI_LINUX
 #define UI_WINDOWS
-// #define UI_DEBUG
+#define UI_DEBUG
 #define UI_IMPLEMENTATION
 #include "luigi.h"
 
@@ -200,6 +200,19 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, LPSTR commandLine, i
 	}
 
 	UIWindowRegisterShortcut(window, (UIShortcut) { .code = UI_KEYCODE_LETTER('T'), .ctrl = true, .invoke = MyMenuCallback, .cp = (void *) "Keyboard shortcut!" });
+
+	{
+		UIWindow *window = UIWindowCreate(0, 0, "MDI Example", 0, 0);
+		UIMDIClient *client = UIMDIClientCreate(&window->e, 0);
+		UIMDIChild *child1 = UIMDIChildCreate(&client->e, UI_MDI_CHILD_CLOSE_BUTTON, UI_RECT_4(10, 600, 10, 400), "My Window", -1);
+		UIPanel *panel1 = UIPanelCreate(&child1->e, UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING);
+		UILabelCreate(&panel1->e, 0, "It's a christmas miracle", -1);
+		UIMDIChild *child2 = UIMDIChildCreate(&client->e, UI_MDI_CHILD_CLOSE_BUTTON, UI_RECT_4(40, 630, 40, 430), "Second Window", -1);
+		UIPanel *panel2 = UIPanelCreate(&child2->e, UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING);
+		UILabelCreate(&panel2->e, 0, "the system is down", -1);
+		UIMDIChild *child3 = UIMDIChildCreate(&client->e, UI_MDI_CHILD_CLOSE_BUTTON, UI_RECT_4(70, 670, 70, 470), "Third Window", -1);
+		UIButtonCreate(&child3->e, 0, "giant button!!", -1);
+	}
 
 	return UIMessageLoop();
 }
