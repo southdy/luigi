@@ -1,8 +1,8 @@
 #include <stdio.h>
 
-// #define UI_LINUX
-#define UI_WINDOWS
-#define UI_DEBUG
+#define UI_LINUX
+// #define UI_WINDOWS
+// #define UI_DEBUG
 #define UI_IMPLEMENTATION
 #include "luigi.h"
 
@@ -70,6 +70,7 @@ int ThemeEditorTableMessage(UIElement *element, UIMessage message, int di, void 
 
 int ThemeEditorColorPickerMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_VALUE_CHANGED) {
+		if (themeEditorSelectedColor == -1) return 0;
 		UIColorToRGB(themeEditorColorPicker->hue, themeEditorColorPicker->saturation, themeEditorColorPicker->value,
 			&ui.theme.colors[themeEditorSelectedColor]);
 		UIElementRepaint(&window->e, NULL);

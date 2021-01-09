@@ -887,7 +887,7 @@ float _UISquareRootFloat(float x) {
 #define _UIFloorFloat floorf
 #define _UIArcTanFloat atanf
 #define _UIArcTan2Float atan2f
-#define _UISinFloat cosf
+#define _UISinFloat sinf
 #define _UICosFloat cosf
 #define _UISquareRootFloat sqrtf
 
