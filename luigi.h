@@ -1,4 +1,3 @@
-// TODO Generating and using font atlases.
 // TODO Better math functions.
 // TODO UIScrollBar - horizontal.
 // TODO UIPanel - more alignment options.
@@ -25,6 +24,9 @@
 // 	- keyboard input
 // 	- minimal repainting
 // 	- UIWindowPostMessage
+// TODO Fonts:
+// 	- Windows
+// 	- Emscripten
 
 #include <stdint.h>
 #include <stddef.h>
@@ -39,11 +41,12 @@
 #include <xmmintrin.h>
 #endif
 
+#define _UI_TO_STRING_1(x) #x
+#define _UI_TO_STRING_2(x) _UI_TO_STRING_1(x)
+
 #ifdef UI_WINDOWS
 #include <windows.h>
 
-#define _UI_TO_STRING_1(x) #x
-#define _UI_TO_STRING_2(x) _UI_TO_STRING_1(x)
 #define UI_ASSERT(x) do { if (!(x)) { MessageBox(0, "Assertion failure on line " _UI_TO_STRING_2(__LINE__), 0, 0); ExitProcess(1); } } while (0)
 #define UI_CALLOC(x) HeapAlloc(ui.heap, HEAP_ZERO_MEMORY, (x))
 #define UI_FREE(x) HeapFree(ui.heap, 0, (x))
@@ -130,11 +133,8 @@ typedef struct UITheme {
 #define UI_SIZE_SCROLL_BAR (16)
 #define UI_SIZE_SCROLL_MINIMUM_THUMB (20)
 
-#define UI_SIZE_GLYPH_WIDTH (9)
-#define UI_SIZE_GLYPH_HEIGHT (16)
-
-#define UI_SIZE_CODE_MARGIN (UI_SIZE_GLYPH_WIDTH * 5)
-#define UI_SIZE_CODE_MARGIN_GAP (UI_SIZE_GLYPH_WIDTH * 1)
+#define UI_SIZE_CODE_MARGIN (ui.glyphWidth * 5)
+#define UI_SIZE_CODE_MARGIN_GAP (ui.glyphWidth * 1)
 
 #define UI_SIZE_TABLE_HEADER (26)
 #define UI_SIZE_TABLE_COLUMN_GAP (20)
@@ -608,6 +608,12 @@ void UIInspectorLog(const char *cFormat, ...);
 
 #ifdef UI_IMPLEMENTATION
 
+#ifdef UI_FREETYPE
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <freetype/ftbitmap.h>
+#endif
+
 struct {
 	UIWindow *windows;
 	UIElement *animating;
@@ -615,6 +621,8 @@ struct {
 
 	UIElement *parentStack[16];
 	int parentStackCount;
+
+	int glyphWidth, glyphHeight;
 
 #ifdef UI_DEBUG
 	UIWindow *inspector;
@@ -641,6 +649,14 @@ struct {
 	EGLContext context;
 	EGLSurface surface;
 	unsigned uniformTextureSampler;
+#endif
+
+#ifdef UI_FREETYPE
+	FT_Face font;
+	FT_Library ft;
+	FT_Bitmap glyphs[128];
+	bool glyphsRendered[128];
+	int glyphOffsetsX[128], glyphOffsetsY[128];
 #endif
 } ui;
 
@@ -734,6 +750,8 @@ UITheme _uiThemeDark = {
 	}},
 };
 
+#ifndef UI_FREETYPE
+
 // Taken from https://commons.wikimedia.org/wiki/File:Codepage-437.png
 // Public domain.
 
@@ -771,6 +789,8 @@ const uint64_t _uiFont[] = {
 	0x3C66C30000000000UL, 0x00000000C3663C18UL, 0x6363630000000000UL, 0x001F30607E636363UL, 0x18337F0000000000UL, 0x000000007F63060CUL, 0x180E181818700000UL, 0x0000000070181818UL, 
 	0x1800181818180000UL, 0x0000000018181818UL, 0x18701818180E0000UL, 0x000000000E181818UL, 0x000000003B6E0000UL, 0x0000000000000000UL, 0x63361C0800000000UL, 0x00000000007F6363UL, 
 };
+
+#endif
 
 void _UIWindowEndPaint(UIWindow *window, UIPainter *painter);
 void _UIWindowSetCursor(UIWindow *window, int cursor);
@@ -1071,6 +1091,54 @@ void UIDrawInvert(UIPainter *painter, UIRectangle rectangle) {
 	}
 }
 
+#ifdef UI_FREETYPE
+
+void UIDrawGlyph(UIPainter *painter, int x0, int y0, int c, uint32_t color) {
+	if (c < 0 || c > 127) c = '?';
+
+	if (!ui.glyphsRendered[c]) {
+		FT_Load_Char(ui.font, c == 24 ? 0x2191 : c == 25 ? 0x2193 : c, FT_LOAD_DEFAULT);
+		FT_Render_Glyph(ui.font->glyph, FT_RENDER_MODE_LCD);
+		FT_Bitmap_Copy(ui.ft, &ui.font->glyph->bitmap, &ui.glyphs[c]);
+		ui.glyphOffsetsX[c] = ui.font->glyph->bitmap_left;
+		ui.glyphOffsetsY[c] = ui.font->size->metrics.ascender / 64 - ui.font->glyph->bitmap_top;
+		ui.glyphsRendered[c] = true;
+	}
+
+	FT_Bitmap *bitmap = &ui.glyphs[c];
+	x0 += ui.glyphOffsetsX[c], y0 += ui.glyphOffsetsY[c];
+
+	for (int y = 0; y < bitmap->rows; y++) {
+		if (y0 + y < painter->clip.t) continue;
+		if (y0 + y >= painter->clip.b) break;
+
+		for (int x = 0; x < bitmap->width / 3; x++) {
+			if (x0 + x < painter->clip.l) continue;
+			if (x0 + x >= painter->clip.r) break;
+
+			uint32_t *destination = painter->bits + (x0 + x) + (y0 + y) * painter->width;
+			uint32_t original = *destination;
+
+			uint32_t ra = ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 0];
+			uint32_t ga = ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 1];
+			uint32_t ba = ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 2];
+			uint32_t r2 = (255 - ra) * ((original & 0x000000FF) >> 0);
+			uint32_t g2 = (255 - ga) * ((original & 0x0000FF00) >> 8);
+			uint32_t b2 = (255 - ba) * ((original & 0x00FF0000) >> 16);
+			uint32_t r1 = ra * ((color & 0x000000FF) >> 0);
+			uint32_t g1 = ga * ((color & 0x0000FF00) >> 8);
+			uint32_t b1 = ba * ((color & 0x00FF0000) >> 16);
+
+			uint32_t result = 0xFF000000 | (0x00FF0000 & ((b1 + b2) << 8)) 
+				| (0x0000FF00 & ((g1 + g2) << 0)) 
+				| (0x000000FF & ((r1 + r2) >> 8));
+			*destination = result;
+		}
+	}
+}
+
+#else
+
 void UIDrawGlyph(UIPainter *painter, int x, int y, int c, uint32_t color) {
 	if (c < 0 || c > 127) c = '?';
 
@@ -1091,6 +1159,8 @@ void UIDrawGlyph(UIPainter *painter, int x, int y, int c, uint32_t color) {
 		}
 	}
 }
+
+#endif
 
 ptrdiff_t _UIStringLength(const char *cString) {
 	if (!cString) return 0;
@@ -1119,11 +1189,11 @@ int UIMeasureStringWidth(const char *string, ptrdiff_t bytes) {
 		bytes = _UIStringLength(string);
 	}
 	
-	return bytes * UI_SIZE_GLYPH_WIDTH;
+	return bytes * ui.glyphWidth;
 }
 
 int UIMeasureStringHeight() {
-	return UI_SIZE_GLYPH_HEIGHT;
+	return ui.glyphHeight;
 }
 
 void UIDrawString(UIPainter *painter, UIRectangle r, const char *string, ptrdiff_t bytes, uint32_t color, int align, UIStringSelection *selection) {
@@ -1162,7 +1232,7 @@ void UIDrawString(UIPainter *painter, UIRectangle r, const char *string, ptrdiff
 		uint32_t colorText = color;
 
 		if (j >= selectFrom && j < selectTo) {
-			UIDrawBlock(painter, UI_RECT_4(x, x + UI_SIZE_GLYPH_WIDTH, y, y + height), selection->colorBackground);
+			UIDrawBlock(painter, UI_RECT_4(x, x + ui.glyphWidth, y, y + height), selection->colorBackground);
 			colorText = selection->colorText;
 		}
 
@@ -1174,10 +1244,10 @@ void UIDrawString(UIPainter *painter, UIRectangle r, const char *string, ptrdiff
 			UIDrawInvert(painter, UI_RECT_4(x, x + 1, y, y + height));
 		}
 
-		x += UI_SIZE_GLYPH_WIDTH, i++;
+		x += ui.glyphWidth, i++;
 
 		if (c == '\t') {
-			while (i & 3) x += UI_SIZE_GLYPH_WIDTH, i++;
+			while (i & 3) x += ui.glyphWidth, i++;
 		}
 	}
 
@@ -1475,7 +1545,7 @@ int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	} else if (message == UI_MSG_GET_WIDTH) {
 		int labelSize = UIMeasureStringWidth(button->label, button->labelBytes);
 		int paddedSize = labelSize + UI_SIZE_BUTTON_PADDING * element->window->scale;
-		if (isDropDown) paddedSize += UI_SIZE_GLYPH_WIDTH * 2;
+		if (isDropDown) paddedSize += ui.glyphWidth * 2;
 		int minimumSize = ((element->flags & UI_BUTTON_SMALL) ? 0 
 				: isMenuItem ? UI_SIZE_MENU_ITEM_MINIMUM_WIDTH 
 				: UI_SIZE_BUTTON_MINIMUM_WIDTH) 
@@ -1854,8 +1924,8 @@ int _UIScrollUpDownMessage(UIElement *element, UIMessage message, int di, void *
 		uint32_t color = element == element->window->pressed ? ui.theme.buttonPressed 
 			: element == element->window->hovered ? ui.theme.buttonHovered : ui.theme.panel2;
 		UIDrawRectangle(painter, element->bounds, color, ui.theme.border, UI_RECT_1(0));
-		UIDrawGlyph(painter, (element->bounds.l + element->bounds.r - UI_SIZE_GLYPH_WIDTH) / 2 + 1, 
-			isDown ? (element->bounds.b - UI_SIZE_GLYPH_HEIGHT - 2 * element->window->scale) 
+		UIDrawGlyph(painter, (element->bounds.l + element->bounds.r - ui.glyphWidth) / 2 + 1, 
+			isDown ? (element->bounds.b - ui.glyphHeight - 2 * element->window->scale) 
 				: (element->bounds.t + 2 * element->window->scale), 
 			isDown ? 25 : 24, ui.theme.scrollGlyph);
 	} else if (message == UI_MSG_UPDATE) {
@@ -2088,11 +2158,11 @@ int _UICodeMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				}
 
 				if (c == '\t') {
-					x += UI_SIZE_GLYPH_WIDTH, ti++;
-					while (ti & 3) x += UI_SIZE_GLYPH_WIDTH, ti++;
+					x += ui.glyphWidth, ti++;
+					while (ti & 3) x += ui.glyphWidth, ti++;
 				} else {
 					UIDrawGlyph(painter, x, y, c, colors[lexState]);
-					x += UI_SIZE_GLYPH_WIDTH, ti++;
+					x += ui.glyphWidth, ti++;
 				}
 			}
 
@@ -2416,7 +2486,7 @@ int _UITableMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		table->vScroll->maximum = table->itemCount * UI_SIZE_TABLE_ROW;
 		table->vScroll->page = UI_RECT_HEIGHT(element->bounds) - UI_SIZE_TABLE_HEADER * table->e.window->scale;
 		UIElementMove(&table->vScroll->e, scrollBarBounds, true);
-	} else if (message == UI_MSG_MOUSE_MOVE) {
+	} else if (message == UI_MSG_MOUSE_MOVE || message == UI_MSG_UPDATE) {
 		UIElementRepaint(element, NULL);
 	} else if (message == UI_MSG_SCROLLED) {
 		UIElementRefresh(element);
@@ -3440,6 +3510,22 @@ void _UIWindowInputEvent(UIWindow *window, UIMessage message, int di, void *dp) 
 	_UIUpdate();
 }
 
+void _UIInitialiseCommon() {
+	ui.theme = _uiThemeDark;
+
+#ifdef UI_FREETYPE
+	FT_Init_FreeType(&ui.ft);
+	FT_New_Face(ui.ft, _UI_TO_STRING_2(UI_FONT_PATH), 0, &ui.font); 
+	FT_Set_Char_Size(ui.font, 0, UI_FONT_SIZE * 64, 100, 100);
+	FT_Load_Char(ui.font, 'a', FT_LOAD_DEFAULT);
+	ui.glyphWidth = ui.font->glyph->advance.x / 64;
+	ui.glyphHeight = (ui.font->size->metrics.ascender - ui.font->size->metrics.descender) / 64;
+#else
+	ui.glyphWidth = 9;
+	ui.glyphHeight = 16;
+#endif
+}
+
 #ifdef UI_DEBUG
 
 void UIInspectorLog(const char *cFormat, ...) {
@@ -3657,7 +3743,7 @@ UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, in
 }
 
 void UIInitialise() {
-	ui.theme = _uiThemeDark;
+	_UIInitialiseCommon();
 
 	XInitThreads();
 
@@ -4093,7 +4179,7 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 }
 
 void UIInitialise() {
-	ui.theme = _uiThemeDark;
+	_UIInitialiseCommon();
 
 	ui.cursors[UI_CURSOR_ARROW] = LoadCursor(NULL, IDC_ARROW);
 	ui.cursors[UI_CURSOR_TEXT] = LoadCursor(NULL, IDC_IBEAM);
@@ -4324,7 +4410,7 @@ void _UIWindowSetCursor(UIWindow *window, int cursor) {
 }
 
 void UIInitialise() {
-	ui.theme = _uiThemeDark;
+	_UIInitialiseCommon();
 
 	EGLint attributes[] = {
 		EGL_RED_SIZE,       8,
