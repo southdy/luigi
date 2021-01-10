@@ -25,7 +25,7 @@ gcc -O2 luigi_example.c -lX11 -o luigi
 If you want to use FreeType for font rendering, pass the additional arguments to `gcc`:
 
 ```
--D UI_FREETYPE -I <path to freetype headers> -D UI_FONT_PATH=<path to font> -D UI_FONT_SIZE=<font size, in pt>
+-lfreetype -D UI_FREETYPE -I <path to freetype headers> -D UI_FONT_PATH=<path to font> -D UI_FONT_SIZE=<font size, in pt>
 ```
 
 ## Documentation
