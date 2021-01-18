@@ -19,7 +19,7 @@ cl /O2 luigi_example.c user32.lib gdi32.lib
 Update `luigi_example.c` to `#define UI_LINUX` at the top of the file, and then run the following command in Bash:
 
 ```
-gcc -O2 luigi_example.c -lX11 -o luigi
+gcc -O2 luigi_example.c -lX11 -lm -o luigi
 ```
 
 If you want to use FreeType for font rendering, pass the additional arguments to `gcc`:
