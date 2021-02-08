@@ -185,6 +185,7 @@ typedef enum UIMessage {
 	UI_MSG_VALUE_CHANGED, // sent to notify that the element's value has changed
 	UI_MSG_TABLE_GET_ITEM, // dp = pointer to UITableGetItem; return string length
 	UI_MSG_CODE_GET_MARGIN_COLOR, // di = line index (starts at 1); return color
+	UI_MSG_CODE_GET_LINE_HINT, // dp = pointer to UITableGetItem (line in index field); return string length
 	UI_MSG_WINDOW_CLOSE, // return 1 to prevent default (process exit for UIWindow; close for UIMDIChild)
 
 	UI_MSG_USER,
@@ -2164,6 +2165,20 @@ int _UICodeMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				} else {
 					UIDrawGlyph(painter, x, y, c, colors[lexState]);
 					x += ui.glyphWidth, ti++;
+				}
+			}
+			
+			{
+				char buffer[128];
+				UITableGetItem m = { 0 };
+				m.buffer = buffer;
+				m.bufferBytes = sizeof(buffer);
+				m.index = i + 1;
+				size_t bytes = UIElementMessage(element, UI_MSG_CODE_GET_LINE_HINT, 0, &m);
+				
+				if (bytes) {
+					UIRectangle rectangle = UI_RECT_4(x + ui.glyphWidth, lineBounds.r, y, y + lineHeight);
+					UIDrawString(painter, rectangle, m.buffer, bytes, ui.theme.codeComment, UI_ALIGN_LEFT, NULL);
 				}
 			}
 
