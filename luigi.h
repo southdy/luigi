@@ -1,4 +1,3 @@
-// TODO Better math functions.
 // TODO UIScrollBar - horizontal.
 // TODO UIPanel - more alignment options.
 // TODO UIMenu - columns.
@@ -842,8 +841,6 @@ bool UIRectangleContains(UIRectangle a, int x, int y) {
 	return a.l <= x && a.r > x && a.t <= y && a.b > y;
 }
 
-#ifdef UI_WINDOWS
-
 #include <xmmintrin.h>
 
 typedef union _UIConvertFloatInteger {
@@ -872,47 +869,62 @@ float _UIFloorFloat(float x) {
 	return convert.f;
 }
 
-float _UIArcTanFloat(float x) {
-	float x2 = x * x, x3 = x2 * x, x5 = x3 * x2, x7 = x5 * x2;
-	if (x < 1 && x > -1) return x - x3 * 0.333333333 + x5 * 0.2 - x7 * 0.142857143;
-	else if (x >= 1) return 1.570796327 - (1.0 / x) + (1.0 / x3) * 0.333333333 - (1.0 / x5) * 0.2 + (1.0 / x7) * 0.142857143;
-	else return -1.570796327 - (1.0 / x) + (1.0 / x3) * 0.333333333 - (1.0 / x5) * 0.2 + (1.0 / x7) * 0.142857143;
-}
-
-float _UIArcTan2Float(float y, float x) {
-	if (x == 0) return y > 0 ? 1.570796327 : -1.570796327;
-	else if (x > 0) return _UIArcTanFloat(y / x);
-	else if (y >= 0) return 3.141592654 + _UIArcTanFloat(y / x);
-	else return -3.141592654 + _UIArcTanFloat(y / x);
-}
-
-float _UISinFloat(float x) {
-	float x2 = x * x, x3 = x2 * x, x5 = x3 * x2, x7 = x5 * x2;
-	return x - x3 * 0.166666667 + x5 * 0.008333333 - x7 * 0.000198413;
-}
-
-float _UICosFloat(float x) {
-	float x2 = x * x, x4 = x2 * x2, x6 = x4 * x2;
-	return 1 - x2 * 0.5 + x4 * 0.041666667 - x6 * 0.001388889;
-}
-
-
 float _UISquareRootFloat(float x) {
 	float result[4];
 	_mm_storeu_ps(result, _mm_sqrt_ps(_mm_set_ps(0, 0, 0, x)));
 	return result[0];
 }
 
-#else
+#define _F(x) (((_UIConvertFloatInteger) { .i = (x) }).f)
 
-#define _UIFloorFloat floorf
-#define _UIArcTanFloat atanf
-#define _UIArcTan2Float atan2f
-#define _UISinFloat sinf
-#define _UICosFloat cosf
-#define _UISquareRootFloat sqrtf
+float _UIArcTanFloatI(float x) {
+	float x2 = x * x;
+	return x * (_F(0x3F7FFFF8) + x2 * (_F(0xBEAAA53C) + x2 * (_F(0x3E4BC990) + x2 * (_F(0xBE084A60) + x2 * _F(0x3D8864B0)))));
+}
 
-#endif
+float _UISinFloatI(float x) {
+	float x2 = x * x;
+	return x * (_F(0x3F800000) + x2 * (_F(0xBE2AAAA0) + x2 * (_F(0x3C0882C0) + x2 * _F(0xB94C6000))));
+}
+
+float _UICosFloatI(float x) {
+	float x2 = x * x;
+	return _F(0x3F800000) + x2 * (_F(0xBEFFFFDA) + x2 * (_F(0x3D2A9F60) + x2 * _F(0xBAB22C00)));
+}
+
+#undef _F
+
+float _UISinFloat(float x) {
+	bool negate = false;
+	if (x < 0) { x = -x; negate = true; }
+	x -= 2 * 3.141592654f * _UIFloorFloat(x / (2 * 3.141592654f));
+	if (x < 3.141592654f / 2) {}
+	else if (x < 3.141592654f) { x = 3.141592654f - x; }
+	else if (x < 3 * 3.141592654f / 2) { x = x - 3.141592654f; negate = !negate; }
+	else { x = 3.141592654f * 2 - x; negate = !negate; }
+	float y = x < 3.141592654f / 4 ? _UISinFloatI(x) : _UICosFloatI(3.141592654f / 2 - x);
+	return negate ? -y : y;
+}
+
+float _UICosFloat(float x) {
+	return _UISinFloat(3.141592654f / 2 - x);
+}
+
+float _UIArcTanFloat(float x) {
+	bool negate = false, reciprocalTaken = false;
+	if (x < 0) { x = -x; negate = true; }
+	if (x > 1) { x = 1 / x; reciprocalTaken = true; }
+	float y = x < 0.5f ? _UIArcTanFloatI(x) : (0.463647609f + _UIArcTanFloatI((2 * x - 1) / (2 + x)));
+	if (reciprocalTaken) { y = 3.141592654f / 2 - y; }
+	return negate ? -y : y;
+}
+
+float _UIArcTan2Float(float y, float x) {
+	if (x == 0) return y > 0 ? 3.141592654f / 2 : -3.141592654f / 2;
+	else if (x > 0) return _UIArcTanFloat(y / x);
+	else if (y >= 0) return 3.141592654f + _UIArcTanFloat(y / x);
+	else return -3.141592654f + _UIArcTanFloat(y / x);
+}
 
 bool UIColorToHSV(uint32_t rgb, float *hue, float *saturation, float *value) {
 	float r = UI_COLOR_RED_F(rgb);
