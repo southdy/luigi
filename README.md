@@ -119,54 +119,54 @@ int UIMessageLoop();
 uint64_t UIAnimateClock(); // In ms.
 
 // Creating elements.
-UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint32_t flags, int (*messageClass)(UIElement *, UIMessage, int, void *), const char *cClassName);
-UIButton *UIButtonCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
-UICode *UICodeCreate(UIElement *parent, uint32_t flags);
+UIElement     *UIElementCreate(size_t bytes, UIElement *parent, uint32_t flags, int (*messageClass)(UIElement *, UIMessage, int, void *), const char *cClassName);
+UIButton      *UIButtonCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
+UICode        *UICodeCreate(UIElement *parent, uint32_t flags);
 UIColorPicker *UIColorPickerCreate(UIElement *parent, uint32_t flags);
-UIGauge *UIGaugeCreate(UIElement *parent, uint32_t flags);
-UILabel *UILabelCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
-UIMDIChild *UIMDIChildCreate(UIElement *parent, uint32_t flags, UIRectangle initialBounds, const char *title, ptrdiff_t titleBytes);
-UIMDIClient *UIMDIClientCreate(UIElement *parent, uint32_t flags);
-UIMenu *UIMenuCreate(UIElement *parent, uint32_t flags);
-UIPanel *UIPanelCreate(UIElement *parent, uint32_t flags);
-UIScrollBar *UIScrollBarCreate(UIElement *parent, uint32_t flags);
-UISlider *UISliderCreate(UIElement *parent, uint32_t flags);
-UISpacer *UISpacerCreate(UIElement *parent, uint32_t flags, int width, int height);
-UISplitPane *UISplitPaneCreate(UIElement *parent, uint32_t flags, float weight);
-UITabPane *UITabPaneCreate(UIElement *parent, uint32_t flags, const char *tabs /* separate with \t, terminate with \0 */);
-UITable *UITableCreate(UIElement *parent, uint32_t flags, const char *columns /* separate with \t, terminate with \0 */);
-UITextbox *UITextboxCreate(UIElement *parent, uint32_t flags);
-UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int width, int height);
+UIGauge       *UIGaugeCreate(UIElement *parent, uint32_t flags);
+UILabel       *UILabelCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
+UIMDIChild    *UIMDIChildCreate(UIElement *parent, uint32_t flags, UIRectangle initialBounds, const char *title, ptrdiff_t titleBytes);
+UIMDIClient   *UIMDIClientCreate(UIElement *parent, uint32_t flags);
+UIMenu        *UIMenuCreate(UIElement *parent, uint32_t flags);
+UIPanel       *UIPanelCreate(UIElement *parent, uint32_t flags);
+UIScrollBar   *UIScrollBarCreate(UIElement *parent, uint32_t flags);
+UISlider      *UISliderCreate(UIElement *parent, uint32_t flags);
+UISpacer      *UISpacerCreate(UIElement *parent, uint32_t flags, int width, int height);
+UISplitPane   *UISplitPaneCreate(UIElement *parent, uint32_t flags, float weight);
+UITabPane     *UITabPaneCreate(UIElement *parent, uint32_t flags, const char *tabs /* separate with \t, terminate with \0 */);
+UITable       *UITableCreate(UIElement *parent, uint32_t flags, const char *columns /* separate with \t, terminate with \0 */);
+UITextbox     *UITextboxCreate(UIElement *parent, uint32_t flags);
+UIWindow      *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int width, int height);
 
 // General elements.
-bool UIElementAnimate(UIElement *element, bool stop);
-void UIElementDestroy(UIElement *element);
-void UIElementDestroyDescendents(UIElement *element);
-UIElement *UIElementFindByPoint(UIElement *element, int x, int y);
-void UIElementFocus(UIElement *element);
+bool        UIElementAnimate(UIElement *element, bool stop);
+void        UIElementDestroy(UIElement *element);
+void        UIElementDestroyDescendents(UIElement *element);
+UIElement  *UIElementFindByPoint(UIElement *element, int x, int y);
+void        UIElementFocus(UIElement *element);
 UIRectangle UIElementScreenBounds(UIElement *element); // Returns bounds of element in same coordinate system as used by UIWindowCreate.
-void UIElementRefresh(UIElement *element);
-void UIElementRepaint(UIElement *element, UIRectangle *region);
-void UIElementMove(UIElement *element, UIRectangle bounds, bool alwaysLayout);
-int UIElementMessage(UIElement *element, UIMessage message, int di, void *dp);
-UIElement *UIParentPush(UIElement *element);
-UIElement *UIParentPop();
+void        UIElementRefresh(UIElement *element);
+void        UIElementRepaint(UIElement *element, UIRectangle *region);
+void        UIElementMove(UIElement *element, UIRectangle bounds, bool alwaysLayout);
+int         UIElementMessage(UIElement *element, UIMessage message, int di, void *dp);
+UIElement  *UIParentPush(UIElement *element);
+UIElement  *UIParentPop();
 
 // Specific elements.
+void UICodeFocusLine(UICode *code, int index); // Line numbers are 1-indexed!!
+int  UICodeHitTest(UICode *code, int x, int y); // Returns line number; negates if in margin. Returns 0 if not on a line.
+void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount, bool replace);
 void UILabelSetContent(UILabel *code, const char *content, ptrdiff_t byteCount);
-void UIWindowRegisterShortcut(UIWindow *window, UIShortcut shortcut);
-void UIWindowPostMessage(UIWindow *window, UIMessage message, void *dp); // Thread-safe.
 void UIMenuAddItem(UIMenu *menu, uint32_t flags, const char *label, ptrdiff_t labelBytes, void (*invoke)(void *cp), void *cp);
 void UIMenuShow(UIMenu *menu);
+int  UITableHitTest(UITable *table, int x, int y); // Returns item index. Returns -1 if not on an item.
+bool UITableEnsureVisible(UITable *table, int index); // Returns false if the item was already visible.
+void UITableResizeColumns(UITable *table);
 void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, bool sendChangedMessage);
 void UITextboxClear(UITextbox *textbox, bool sendChangedMessage);
 void UITextboxMoveCaret(UITextbox *textbox, bool backward, bool word);
-int UITableHitTest(UITable *table, int x, int y); // Returns item index. Returns -1 if not on an item.
-bool UITableEnsureVisible(UITable *table, int index); // Returns false if the item was already visible.
-void UITableResizeColumns(UITable *table);
-void UICodeFocusLine(UICode *code, int index); // Line numbers are 1-indexed!!
-int UICodeHitTest(UICode *code, int x, int y); // Returns line number; negates if in margin. Returns 0 if not on a line.
-void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount, bool replace);
+void UIWindowRegisterShortcut(UIWindow *window, UIShortcut shortcut);
+void UIWindowPostMessage(UIWindow *window, UIMessage message, void *dp); // Thread-safe.
 
 // Graphics.
 void UIDrawBlock(UIPainter *painter, UIRectangle rectangle, uint32_t color);
@@ -175,17 +175,17 @@ void UIDrawGlyph(UIPainter *painter, int x, int y, int c, uint32_t color);
 void UIDrawRectangle(UIPainter *painter, UIRectangle r, uint32_t mainColor, uint32_t borderColor, UIRectangle borderSize);
 void UIDrawBorder(UIPainter *painter, UIRectangle r, uint32_t borderColor, UIRectangle borderSize);
 void UIDrawString(UIPainter *painter, UIRectangle r, const char *string, ptrdiff_t bytes, uint32_t color, int align, UIStringSelection *selection);
-int UIMeasureStringWidth(const char *string, ptrdiff_t bytes);
-int UIMeasureStringHeight();
+int  UIMeasureStringWidth(const char *string, ptrdiff_t bytes);
+int  UIMeasureStringHeight();
 
 // Helpers.
+bool        UIColorToHSV(uint32_t rgb, float *hue, float *saturation, float *value);
+void        UIColorToRGB(float hue, float saturation, float value, uint32_t *rgb);
 UIRectangle UIRectangleIntersection(UIRectangle a, UIRectangle b);
 UIRectangle UIRectangleBounding(UIRectangle a, UIRectangle b);
 UIRectangle UIRectangleAdd(UIRectangle a, UIRectangle b);
 UIRectangle UIRectangleTranslate(UIRectangle a, UIRectangle b);
-bool UIRectangleEquals(UIRectangle a, UIRectangle b);
-bool UIRectangleContains(UIRectangle a, int x, int y);
-bool UIColorToHSV(uint32_t rgb, float *hue, float *saturation, float *value);
-void UIColorToRGB(float hue, float saturation, float value, uint32_t *rgb);
-char *UIStringCopy(const char *in, ptrdiff_t inBytes);
+bool        UIRectangleEquals(UIRectangle a, UIRectangle b);
+bool        UIRectangleContains(UIRectangle a, int x, int y);
+char       *UIStringCopy(const char *in, ptrdiff_t inBytes);
 ```
