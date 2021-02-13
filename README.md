@@ -189,3 +189,48 @@ bool        UIRectangleEquals(UIRectangle a, UIRectangle b);
 bool        UIRectangleContains(UIRectangle a, int x, int y);
 char       *UIStringCopy(const char *in, ptrdiff_t inBytes);
 ```
+
+### Messages
+
+```c
+// General events.
+UI_MSG_PAINT, // dp = pointer to UIPainter
+UI_MSG_DESTROY,
+UI_MSG_UPDATE, // di = UI_UPDATE_... constant
+UI_MSG_ANIMATE,
+
+// Layouting.
+UI_MSG_LAYOUT,
+UI_MSG_GET_WIDTH, // di = height (if known); return width
+UI_MSG_GET_HEIGHT, // di = width (if known); return height
+
+// Scrollbars.
+UI_MSG_SCROLLED, // sent to parent of the scrollbar
+
+// Mouse input.
+UI_MSG_CLICKED,
+UI_MSG_LEFT_DOWN,
+UI_MSG_LEFT_UP,
+UI_MSG_MIDDLE_DOWN,
+UI_MSG_MIDDLE_UP,
+UI_MSG_RIGHT_DOWN,
+UI_MSG_RIGHT_UP,
+UI_MSG_MOUSE_MOVE,
+UI_MSG_MOUSE_DRAG,
+UI_MSG_MOUSE_WHEEL, // di = delta; return 1 if handled
+
+// Cursors.
+UI_MSG_FIND_BY_POINT, // dp = pointer to UIFindByPoint; return 1 if handled
+UI_MSG_GET_CURSOR, // return cursor code
+UI_MSG_PRESSED_DESCENDENT, // dp = pointer to child that is/contains pressed element
+
+// Keyboard input.
+UI_MSG_KEY_TYPED, // dp = pointer to UIKeyTyped; return 1 if handled
+
+// Element-specific.
+UI_MSG_VALUE_CHANGED, // sent to notify that the element's value has changed
+UI_MSG_TABLE_GET_ITEM, // dp = pointer to UITableGetItem; return string length
+UI_MSG_CODE_GET_MARGIN_COLOR, // di = line index (starts at 1); return color
+UI_MSG_CODE_GET_LINE_HINT, // dp = pointer to UITableGetItem (line in index field); return string length
+UI_MSG_WINDOW_CLOSE, // return 1 to prevent default (process exit for UIWindow; close for UIMDIChild)
+```
