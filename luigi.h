@@ -440,12 +440,13 @@ typedef struct UITabPane {
 } UITabPane;
 
 typedef struct UIScrollBar {
+#define UI_SCROLL_BAR_HORIZONTAL (1 << 0)
 	UIElement e;
 	int64_t maximum, page;
 	int64_t dragOffset;
 	double position;
 	uint64_t lastAnimateTime;
-	bool inDrag;
+	bool inDrag, horizontal;
 } UIScrollBar;
 
 typedef struct UICodeLine {
@@ -454,7 +455,6 @@ typedef struct UICodeLine {
 
 typedef struct UICode {
 #define UI_CODE_NO_MARGIN (1 << 0)
-
 	UIElement e;
 	UIScrollBar *vScroll;
 	UICodeLine *lines;
@@ -1110,7 +1110,7 @@ void UIDrawGlyph(UIPainter *painter, int x0, int y0, int c, uint32_t color) {
 	if (c < 0 || c > 127) c = '?';
 
 	if (!ui.glyphsRendered[c]) {
-		FT_Load_Char(ui.font, c == 24 ? 0x2191 : c == 25 ? 0x2193 : c, FT_LOAD_DEFAULT);
+		FT_Load_Char(ui.font, c == 24 ? 0x2191 : c == 25 ? 0x2193 : c == 26 ? 0x2192 : c == 27 ? 0x2190 : c, FT_LOAD_DEFAULT);
 		FT_Render_Glyph(ui.font->glyph, FT_RENDER_MODE_LCD);
 		FT_Bitmap_Copy(ui.ft, &ui.font->glyph->bitmap, &ui.glyphs[c]);
 		ui.glyphOffsetsX[c] = ui.font->glyph->bitmap_left;
@@ -1888,7 +1888,7 @@ int _UIScrollBarMessage(UIElement *element, UIMessage message, int di, void *dp)
 			thumb->flags &= ~UI_ELEMENT_HIDE;
 			down->flags &= ~UI_ELEMENT_HIDE;
 
-			int size = UI_RECT_HEIGHT(element->bounds);
+			int size = scrollBar->horizontal ? UI_RECT_WIDTH(element->bounds) : UI_RECT_HEIGHT(element->bounds);
 			int thumbSize = size * scrollBar->page / scrollBar->maximum;
 
 			if (thumbSize < UI_SIZE_SCROLL_MINIMUM_THUMB * element->window->scale) {
@@ -1907,13 +1907,23 @@ int _UIScrollBarMessage(UIElement *element, UIMessage message, int di, void *dp)
 				thumbPosition = size - thumbSize;
 			}
 
-			UIRectangle r = element->bounds;
-			r.b = r.t + thumbPosition;
-			UIElementMove(up, r, false);
-			r.t = r.b, r.b = r.t + thumbSize;
-			UIElementMove(thumb, r, false);
-			r.t = r.b, r.b = element->bounds.b;
-			UIElementMove(down, r, false);
+			if (scrollBar->horizontal) {
+				UIRectangle r = element->bounds;
+				r.r = r.l + thumbPosition;
+				UIElementMove(up, r, false);
+				r.l = r.r, r.r = r.l + thumbSize;
+				UIElementMove(thumb, r, false);
+				r.l = r.r, r.r = element->bounds.r;
+				UIElementMove(down, r, false);
+			} else {
+				UIRectangle r = element->bounds;
+				r.b = r.t + thumbPosition;
+				UIElementMove(up, r, false);
+				r.t = r.b, r.b = r.t + thumbSize;
+				UIElementMove(thumb, r, false);
+				r.t = r.b, r.b = element->bounds.b;
+				UIElementMove(down, r, false);
+			}
 		}
 	} else if (message == UI_MSG_PAINT) {
 		if (scrollBar->page >= scrollBar->maximum || scrollBar->maximum <= 0 || scrollBar->page <= 0) {
@@ -1938,10 +1948,18 @@ int _UIScrollUpDownMessage(UIElement *element, UIMessage message, int di, void *
 		uint32_t color = element == element->window->pressed ? ui.theme.buttonPressed 
 			: element == element->window->hovered ? ui.theme.buttonHovered : ui.theme.panel2;
 		UIDrawRectangle(painter, element->bounds, color, ui.theme.border, UI_RECT_1(0));
-		UIDrawGlyph(painter, (element->bounds.l + element->bounds.r - ui.glyphWidth) / 2 + 1, 
-			isDown ? (element->bounds.b - ui.glyphHeight - 2 * element->window->scale) 
-				: (element->bounds.t + 2 * element->window->scale), 
-			isDown ? 25 : 24, ui.theme.scrollGlyph);
+		
+		if (scrollBar->horizontal) {
+			UIDrawGlyph(painter, isDown ? (element->bounds.r - ui.glyphWidth - 2 * element->window->scale) 
+					: (element->bounds.l + 2 * element->window->scale), 
+				(element->bounds.t + element->bounds.b - ui.glyphHeight) / 2,
+				isDown ? 26 : 27, ui.theme.scrollGlyph);
+		} else {
+			UIDrawGlyph(painter, (element->bounds.l + element->bounds.r - ui.glyphWidth) / 2 + 1, 
+				isDown ? (element->bounds.b - ui.glyphHeight - 2 * element->window->scale) 
+					: (element->bounds.t + 2 * element->window->scale), 
+				isDown ? 25 : 24, ui.theme.scrollGlyph);
+		}
 	} else if (message == UI_MSG_UPDATE) {
 		UIElementRepaint(element, NULL);
 	} else if (message == UI_MSG_LEFT_DOWN) {
@@ -1979,13 +1997,18 @@ int _UIScrollThumbMessage(UIElement *element, UIMessage message, int di, void *d
 	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1) {
 		if (!scrollBar->inDrag) {
 			scrollBar->inDrag = true;
-			scrollBar->dragOffset = element->bounds.t - scrollBar->e.bounds.t - element->window->cursorY;
+			
+			if (scrollBar->horizontal) {
+				scrollBar->dragOffset = element->bounds.l - scrollBar->e.bounds.l - element->window->cursorX;
+			} else {
+				scrollBar->dragOffset = element->bounds.t - scrollBar->e.bounds.t - element->window->cursorY;
+			}
 		}
 
-		int thumbPosition = element->window->cursorY + scrollBar->dragOffset;
-		scrollBar->position = (double) thumbPosition 
-			/ (UI_RECT_HEIGHT(scrollBar->e.bounds) - UI_RECT_HEIGHT(element->bounds)) 
-			* (scrollBar->maximum - scrollBar->page);
+		int thumbPosition = (scrollBar->horizontal ? element->window->cursorX : element->window->cursorY) + scrollBar->dragOffset;
+		int size = scrollBar->horizontal ? (UI_RECT_WIDTH(scrollBar->e.bounds) - UI_RECT_WIDTH(element->bounds))
+				: (UI_RECT_HEIGHT(scrollBar->e.bounds) - UI_RECT_HEIGHT(element->bounds));
+		scrollBar->position = (double) thumbPosition / size * (scrollBar->maximum - scrollBar->page);
 		UIElementRefresh(&scrollBar->e);
 		UIElementMessage(scrollBar->e.parent, UI_MSG_SCROLLED, 0, 0);
 	} else if (message == UI_MSG_LEFT_UP) {
@@ -1997,9 +2020,10 @@ int _UIScrollThumbMessage(UIElement *element, UIMessage message, int di, void *d
 
 UIScrollBar *UIScrollBarCreate(UIElement *parent, uint32_t flags) {
 	UIScrollBar *scrollBar = (UIScrollBar *) UIElementCreate(sizeof(UIScrollBar), parent, flags, _UIScrollBarMessage, "Scroll Bar");
-	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollUpDownMessage, "Scroll Up")->cp = (void *) (uintptr_t) 0;
+	bool horizontal = scrollBar->horizontal = flags & UI_SCROLL_BAR_HORIZONTAL;
+	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollUpDownMessage, !horizontal ? "Scroll Up" : "Scroll Left")->cp = (void *) (uintptr_t) 0;
 	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollThumbMessage, "Scroll Thumb");
-	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollUpDownMessage, "Scroll Down")->cp = (void *) (uintptr_t) 1;
+	UIElementCreate(sizeof(UIElement), &scrollBar->e, flags, _UIScrollUpDownMessage, !horizontal ? "Scroll Down" : "Scroll Right")->cp = (void *) (uintptr_t) 1;
 	return scrollBar;
 }
 
