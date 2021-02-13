@@ -112,7 +112,7 @@ Do not call these directly; see `UIElementMessage`.
 
 ### Functions
 
-```
+```c
 // General.
 void UIInitialise();
 int UIMessageLoop();
