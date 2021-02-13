@@ -1,31 +1,8 @@
-// TODO UIScrollBar - horizontal.
-// TODO UIPanel - more alignment options.
-// TODO UIMenu - columns.
-// TODO Keyboard navigation:
-// 	- menus
-// 	- dialogs
-// 	- tables
-// TODO UITextbox features:
-// 	- mouse input
-// 	- multi-line 
-// 	- clipboard
-// 	- undo/redo
-// 	- IME support
-// TODO Elements:
-// 	- list view
-// 	- dialogs
-// 	- menu bar
-// 	- choice box
-// 	- drawing canvas
-// TODO Emscripten:
-// 	- menus?
-// 	- setting cursor
-// 	- keyboard input
-// 	- minimal repainting
-// 	- UIWindowPostMessage
-// TODO Fonts:
-// 	- Windows
-// 	- Emscripten
+// TODO UIMenu features - columns.
+// TODO UITextbox features - mouse input, multi-line, clipboard, undo, IME support.
+// TODO New elements - list view, dialogs, menu bar, drawing canvas.
+// TODO Keyboard navigation - menus, dialogs, tables.
+// TODO Easier to use fonts; GDI font support.
 
 #include <stdint.h>
 #include <stddef.h>
@@ -56,14 +33,7 @@
 #define UI_CLOCK_T DWORD
 #endif
 
-#ifdef UI_EMSCRIPTEN
-#include <GLES2/gl2.h>
-#include <emscripten.h>
-#include <emscripten/html5.h>
-#include <EGL/egl.h>
-#endif
-
-#if defined(UI_EMSCRIPTEN) || defined(UI_LINUX)
+#if defined(UI_LINUX)
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -642,13 +612,6 @@ struct {
 #ifdef UI_WINDOWS
 	HCURSOR cursors[UI_CURSOR_COUNT];
 	HANDLE heap;
-#endif
-
-#ifdef UI_EMSCRIPTEN
-	EGLDisplay display;
-	EGLContext context;
-	EGLSurface surface;
-	unsigned uniformTextureSampler;
 #endif
 
 #ifdef UI_FREETYPE
@@ -4380,232 +4343,6 @@ void *_UIHeapReAlloc(void *pointer, size_t size) {
 			return NULL;
 		}
 	}
-}
-
-#endif
-
-#ifdef UI_EMSCRIPTEN
-
-const int UI_KEYCODE_A = 0;
-const int UI_KEYCODE_BACKSPACE = 26;
-const int UI_KEYCODE_DELETE = 27;
-const int UI_KEYCODE_DOWN = 28;
-const int UI_KEYCODE_END = 29;
-const int UI_KEYCODE_ENTER = 30;
-const int UI_KEYCODE_ESCAPE = 31;
-const int UI_KEYCODE_F1 = 32;
-const int UI_KEYCODE_F2 = 33;
-const int UI_KEYCODE_F3 = 34;
-const int UI_KEYCODE_F4 = 35;
-const int UI_KEYCODE_F5 = 36;
-const int UI_KEYCODE_F6 = 37;
-const int UI_KEYCODE_F7 = 38;
-const int UI_KEYCODE_F8 = 39;
-const int UI_KEYCODE_F9 = 40;
-const int UI_KEYCODE_F10 = 41;
-const int UI_KEYCODE_F11 = 42;
-const int UI_KEYCODE_F12 = 43;
-const int UI_KEYCODE_HOME = 44;
-const int UI_KEYCODE_LEFT = 45;
-const int UI_KEYCODE_RIGHT = 46;
-const int UI_KEYCODE_SPACE = 47;
-const int UI_KEYCODE_TAB = 48;
-const int UI_KEYCODE_UP = 49;
-
-void UIWindowPostMessage(UIWindow *window, UIMessage message, void *_dp) {
-	// TODO.
-}
-
-void _UIWindowGetScreenPosition(UIWindow *window, int *_x, int *_y) {
-	// TODO.
-	*_x = *_y = 0;
-}
-
-int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
-	if (message == UI_MSG_LAYOUT) {
-		if (element->children) {
-			UIElementMove(element->children, element->bounds, false);
-		}
-
-		UIElementRepaint(element, NULL);
-	} else if (message == UI_MSG_DESTROY) {
-		UIWindow *window = (UIWindow *) element;
-		_UIWindowDestroyCommon(window);
-	}
-
-	return 0;
-}
-
-UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, int width, int height) {
-	_UIMenusClose();
-
-	UIWindow *window = (UIWindow *) UIElementCreate(sizeof(UIWindow), NULL, flags | UI_ELEMENT_WINDOW, _UIWindowMessage, "Window");
-	_UIWindowAdd(window);
-
-	return window;
-}
-
-void _UIWindowEndPaint(UIWindow *window, UIPainter *painter) {
-	// TODO Minimal updating.
-	GLuint texture;
-	glActiveTexture(GL_TEXTURE0);
-	glUniform1i(ui.uniformTextureSampler, 0);
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, window->width, window->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, window->bits);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-	glDeleteTextures(1, &texture);
-}
-
-void _UIWindowSetCursor(UIWindow *window, int cursor) {
-	// TODO.
-}
-
-void UIInitialise() {
-	_UIInitialiseCommon();
-
-	EGLint attributes[] = {
-		EGL_RED_SIZE,       8,
-		EGL_GREEN_SIZE,     8,
-		EGL_BLUE_SIZE,      8,
-		EGL_ALPHA_SIZE,     EGL_DONT_CARE,
-		EGL_DEPTH_SIZE,     EGL_DONT_CARE,
-		EGL_STENCIL_SIZE,   EGL_DONT_CARE,
-		EGL_SAMPLE_BUFFERS, 1,
-		EGL_NONE
-	};
-
-	EGLint contextAttributes[] = { 
-		EGL_CONTEXT_CLIENT_VERSION, 2, 
-		EGL_NONE, EGL_NONE 
-	};
-
-	EGLConfig configuration;
-	int configurationsFound;
-
-	ui.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	eglInitialize(ui.display, NULL, NULL);
-	eglChooseConfig(ui.display, attributes, &configuration, 1, &configurationsFound);
-	ui.surface = eglCreateWindowSurface(ui.display, configuration, (EGLNativeWindowType) NULL, NULL);
-	ui.context = eglCreateContext(ui.display, configuration, EGL_NO_CONTEXT, contextAttributes);
-	eglMakeCurrent(ui.display, ui.surface, ui.surface, ui.context);
-
-	glClearColor(0, 0, 1, 1);
-	glClear(GL_COLOR_BUFFER_BIT);
-	eglSwapBuffers(ui.display, ui.surface);
-
-	float squareVBOArray[] = { -1, -1, 0, 1, -1, 1, 0, 0, 1, 1, 1, 0, 1, -1, 1, 1 };
-	unsigned squareIBOArray[] = { 0, 1, 2, 0, 2, 3 };
-
-	unsigned squareVBO, squareIBO;
-	
-	glGenBuffers(1, &squareVBO);
-	glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(squareVBOArray), squareVBOArray, GL_STATIC_DRAW);
-	
-	glGenBuffers(1, &squareIBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, squareIBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(squareIBOArray), squareIBOArray, GL_STATIC_DRAW);
-
-	const char *vertexShaderSource = "precision mediump float; attribute vec2 inCoordinate; attribute vec2 inTextureCoordinate; varying vec2 outTextureCoordinate; "
-		"void main(void) { gl_Position = vec4(inCoordinate, 0.5, 1.0); outTextureCoordinate = inTextureCoordinate; }";
-	const char *fragmentShaderSource = "precision mediump float; varying vec2 outTextureCoordinate; uniform sampler2D textureSampler; "
-		"void main(void) { gl_FragColor = texture2D(textureSampler, outTextureCoordinate).bgra; }";
-	int vertexShaderLength = strlen(vertexShaderSource), fragmentShaderLength = strlen(fragmentShaderSource);
-
-	GLint success;
-
-	unsigned shaderProgram = glCreateProgram();
-	unsigned vertexShaderObject = glCreateShader(GL_VERTEX_SHADER);
-	unsigned fragmentShaderObject = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(vertexShaderObject, 1, &vertexShaderSource, &vertexShaderLength);
-	glCompileShader(vertexShaderObject);
-	glGetShaderiv(vertexShaderObject, GL_COMPILE_STATUS, &success);
-	UI_ASSERT(success);
-	glAttachShader(shaderProgram, vertexShaderObject);	
-	glShaderSource(fragmentShaderObject, 1, &fragmentShaderSource, &fragmentShaderLength);
-	glCompileShader(fragmentShaderObject);
-	glGetShaderiv(fragmentShaderObject, GL_COMPILE_STATUS, &success);
-	UI_ASSERT(success);
-	glAttachShader(shaderProgram, fragmentShaderObject);	
-	glLinkProgram(shaderProgram);
-	glValidateProgram(shaderProgram);
-
-	unsigned uniformTextureSampler = glGetUniformLocation(shaderProgram, "textureSampler");
-	unsigned shaderAttributeCoordinate = glGetAttribLocation(shaderProgram, "inCoordinate");
-	unsigned shaderAttributeTextureCoordinate = glGetAttribLocation(shaderProgram, "inTextureCoordinate");
-	
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(shaderAttributeCoordinate, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const GLvoid *) 0);
-	glVertexAttribPointer(shaderAttributeTextureCoordinate, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const GLvoid *) (2 * sizeof(float)));
-	glUseProgram(shaderProgram);
-}
-
-void _UIRefreshWindowSize() {
-	UIWindow *window = ui.windows;
-	int width, height;
-	emscripten_get_canvas_element_size("canvas.emscripten", &width, &height);
-	if (window->width == width && window->height == height) return;
-	window->width = width, window->height = height;
-	window->bits = (uint32_t *) UI_REALLOC(window->bits, window->width * window->height * 4);
-	window->e.bounds = UI_RECT_2S(window->width, window->height);
-	window->e.clip = UI_RECT_2S(window->width, window->height);
-	UIElementMessage(&window->e, UI_MSG_LAYOUT, 0, 0);
-}
-
-EM_BOOL _UIMouseDown(int eventType, const EmscriptenMouseEvent *mouseEvent, void *_unused) {
-	if (mouseEvent->button > 2) return false;
-	_UIRefreshWindowSize();
-	UIWindow *window = ui.windows;
-	_UIWindowInputEvent(window, UI_MSG_LEFT_DOWN + 2 * mouseEvent->button, 0, 0);
-	return false;
-}
-
-EM_BOOL _UIMouseUp(int eventType, const EmscriptenMouseEvent *mouseEvent, void *_unused) {
-	if (mouseEvent->button > 2) return false;
-	_UIRefreshWindowSize();
-	UIWindow *window = ui.windows;
-	_UIWindowInputEvent(window, UI_MSG_LEFT_UP + 2 * mouseEvent->button, 0, 0);
-	return false;
-}
-
-EM_BOOL _UIMouseMove(int eventType, const EmscriptenMouseEvent *mouseEvent, void *_unused) {
-	_UIRefreshWindowSize();
-	UIWindow *window = ui.windows;
-	window->cursorX = mouseEvent->targetX;
-	window->cursorY = mouseEvent->targetY;
-	_UIWindowInputEvent(window, UI_MSG_MOUSE_MOVE, 0, 0);
-	return false;
-}
-
-EM_BOOL _UIKeyDown(int eventType, const EmscriptenKeyboardEvent *keyboardEvent, void *_unused) {
-	_UIRefreshWindowSize();
-	UIWindow *window = ui.windows;
-	// TODO.
-	return false;
-}
-
-EM_BOOL _UIWheel(int eventType, const EmscriptenWheelEvent *wheelEvent, void *_unused) {
-	_UIRefreshWindowSize();
-	UIWindow *window = ui.windows;
-	_UIWindowInputEvent(window, UI_MSG_MOUSE_WHEEL, 25.0f * wheelEvent->deltaY, 0);
-	return true;
-}
-
-int UIMessageLoop() {
-	emscripten_set_keydown_callback("canvas.emscripten", NULL, true, _UIKeyDown);
-	emscripten_set_mousedown_callback("canvas.emscripten", NULL, false, _UIMouseDown);
-	emscripten_set_mousemove_callback("canvas.emscripten", NULL, false, _UIMouseMove);
-	emscripten_set_mouseup_callback("canvas.emscripten", NULL, false, _UIMouseUp);
-	emscripten_set_wheel_callback("canvas.emscripten", NULL, true, _UIWheel);
-	_UIRefreshWindowSize();
-	_UIUpdate();
-	return 0;
 }
 
 #endif
