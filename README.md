@@ -28,6 +28,14 @@ If you want to use FreeType for font rendering, pass the additional arguments to
 -lfreetype -D UI_FREETYPE -I <path to freetype headers> -D UI_FONT_PATH=<path to font> -D UI_FONT_SIZE=<font size, in pt>
 ```
 
+## Projects made with luigi
+
+Designer, https://gitlab.com/nakst/essence/-/blob/master/util/designer.c
+![Screenshot of Designer, showing a list of layers, sequences, keyframes, properties, preview settings, and a preview of a push button being edited.](https://cdn.discordapp.com/attachments/462643277321994245/810295844410228766/unknown.png)
+
+GDB frontend, https://github.com/nakst/gf/
+![Screenshot of the debugger's interface, showing the source view, breakpoints list, call stack and command prompt.](https://cdn.discordapp.com/attachments/462643277321994245/795277703943159818/image.png)
+
 ## Documentation
 
 ### Introduction
